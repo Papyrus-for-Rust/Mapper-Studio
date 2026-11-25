@@ -11,6 +11,46 @@ fn shortcut_button(
 }
 
 impl Studio {
+    pub(super) fn support_snapshot_window(&self, ctx: &egui::Context) {
+        let id = egui::Id::new("support-snapshot");
+        let Some((preview, code)) = ctx.data(|data| data.get_temp::<(String, String)>(id)) else {
+            return;
+        };
+
+        let mut open = true;
+        egui::Window::new("Support snapshot")
+            .id(id)
+            .open(&mut open)
+            .default_width(520.)
+            .show(ctx, |ui| {
+                ui.label("Review the details below, then copy the code if you want to share them.");
+                ui.small("Anyone with the code can read these details. Mapper sends nothing automatically.");
+                egui::ScrollArea::vertical().max_height(300.).show(ui, |ui| {
+                    ui.add(egui::Label::new(egui::RichText::new(&preview).monospace()).selectable(true));
+                });
+                if ui.button("Copy support code").clicked() {
+                    ctx.copy_text(code);
+                }
+            });
+        if !open {
+            ctx.data_mut(|data| data.remove::<(String, String)>(id));
+        }
+    }
+
+    fn open_support_snapshot(&mut self, ctx: &egui::Context) {
+        let snapshot = mapper_studio::support_snapshot::Snapshot::capture(
+            self.updates.version().unwrap_or(env!("CARGO_PKG_VERSION")),
+            self.source.inspected_installation(),
+            self.project.native_profile.as_ref(),
+        );
+        match (serde_json::to_string_pretty(&snapshot), snapshot.encode()) {
+            (Ok(preview), Ok(code)) => ctx.data_mut(|data| {
+                data.insert_temp(egui::Id::new("support-snapshot"), (preview, code));
+            }),
+            _ => self.status = "Could not create the support snapshot.".into(),
+        }
+    }
+
     pub(super) fn map_tab_path(&self) -> Option<egui_dock::TabPath> {
         self.dock.find_tab(&Tab::Map).or_else(|| {
             self.dock.find_tab_from(|tab| matches!(tab, Tab::Generated(_)))
@@ -376,6 +416,10 @@ impl Studio {
             ui.menu_button("Help", |ui| {
                 ui.label("Mapper for Rust");
                 ui.small(format!("Version {}", self.updates.version().unwrap_or(env!("CARGO_PKG_VERSION"))));
+                if ui.button("Support snapshot…").clicked() {
+                    self.open_support_snapshot(ui.ctx());
+                    ui.close();
+                }
                 if ui.button("Check for updates…").clicked() {
                     self.updates.check(ui.ctx(), true);
                     ui.close();

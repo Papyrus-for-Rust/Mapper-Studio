@@ -18,3 +18,13 @@ $rustRoot = 'C:/Steam/steamapps/common/Rust'
 ```
 
 Use a fresh output path. Keep the exported map with its recipe if you plan to reproduce it after changing installations.
+
+## Decode a support code
+
+In Mapper, open **Help → Support snapshot** to review what the code contains. Copy the code and share it with the person helping you.
+
+```powershell
+./mapper.exe support decode "MPS1-PASTE_CODE_HERE"
+```
+
+The command prints JSON locally. Anyone with the code can decode it.

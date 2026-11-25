@@ -99,6 +99,11 @@ impl SourcePanel {
             .or_else(|| self.rebind.as_ref().map(|task| &task.cancel))
     }
 
+    pub fn inspected_installation(&self) -> Option<&Installation> {
+        self.pending.as_ref().map(|source| &source.binding.identity)
+            .or_else(|| self.binding.as_ref().map(|binding| &binding.identity))
+    }
+
     pub fn bound_root(&self, project: &Project) -> Option<PathBuf> {
         self.bound_root_ref(project).map(Path::to_path_buf)
     }

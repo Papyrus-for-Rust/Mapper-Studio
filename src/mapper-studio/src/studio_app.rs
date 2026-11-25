@@ -2605,6 +2605,7 @@ impl eframe::App for Studio {
         self.installation_setup_window(&ctx);
         self.recipe_settings_window(&ctx);
         self.settings_window(&ctx);
+        self.support_snapshot_window(&ctx);
         let can_restart = self.updates.awaiting_restart() && !self.dirty() && !self.generation_in_progress()
             && !self.project_io.busy() && self.pending.is_none();
         self.updates.show(&ctx, self.path.as_deref(), can_restart);

@@ -27,6 +27,7 @@ rayon = "1.12"
 pollster = "1"
 bytemuck = "1"
 half = "2.7.1"
+hex = "0.4"
 texpresso = "=2.0.2"
 semver = "1"
 zip = { version = "9.3", default-features = false, features = ["deflate-flate2"] }

@@ -1809,6 +1809,7 @@ dependencies = [
  "egui_dock",
  "flate2",
  "half",
+ "hex",
  "mapper-plugin-sdk",
  "papyrus-file-id",
  "papyrus-terrain",
