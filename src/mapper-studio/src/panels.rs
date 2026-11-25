@@ -247,13 +247,89 @@ impl Studio {
         });
     }
 
+    fn map_size_magnet(&mut self, ui: &mut egui::Ui) {
+        let snap = self.preferences.map_size_snap;
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(18., 18.), Sense::click());
+        let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+        let color = if snap.enabled() || response.hovered() || response.has_focus() {
+            ui.visuals().text_color()
+        } else {
+            ui.visuals().weak_text_color()
+        };
+        let stroke = Stroke::new(1.05, color);
+        let center = rect.center();
+        let magnet = [
+            (-7., -6.), (-7., 1.), (-6., 4.), (-3.5, 6.), (0., 7.), (3.5, 6.), (6., 4.),
+            (7., 1.), (7., -6.), (3., -6.), (3., 1.), (2., 2.5), (0., 3.), (-2., 2.5),
+            (-3., 1.), (-3., -6.), (-7., -6.),
+        ];
+        let scale = 0.72;
+        ui.painter().add(egui::Shape::line(
+            magnet.map(|(x, y)| center + egui::vec2(x, y) * scale).to_vec(), stroke,
+        ));
+        for [left, right] in [[-7., -3.], [3., 7.]] {
+            ui.painter().hline(
+                center.x + left * scale..=center.x + right * scale, center.y - 2. * scale, stroke,
+            );
+        }
+        response.widget_info(|| egui::WidgetInfo::selected(
+            egui::WidgetType::Button, response.enabled(), snap.enabled(), "Map size snapping",
+        ));
+        let mut next = if response.clicked() { snap.toggled() } else { snap };
+        let popup_state = response.id.with("snap-distance-hover");
+        let previous = ui.ctx().data(|data| data.get_temp::<egui::Rect>(popup_state));
+        let over_popup = previous.is_some_and(|rect| {
+            ui.ctx().pointer_hover_pos().is_some_and(|pos| rect.expand(2.).contains(pos))
+        });
+        if response.hovered() || response.gained_focus() || previous.is_some() {
+            let mut distance = next.distance();
+            let panel = egui::Popup::from_response(&response)
+                .gap(1.)
+                .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
+                .show(|ui| {
+                    ui.horizontal(|ui| {
+                        let caption = ui.label(if next.enabled() { "Snap distance" } else { "Snap distance (off)" });
+                        ui.add(egui::DragValue::new(&mut distance)
+                            .range(1..=MapSizeSnap::MAX_DISTANCE)
+                            .speed(1.)
+                            .suffix(" m")
+                            .update_while_editing(false))
+                            .labelled_by(caption.id)
+                            .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
+                    }).inner
+                });
+            if let Some(panel) = panel {
+                if panel.inner.changed() && distance != next.distance() {
+                    next = next.with_distance(distance);
+                }
+                // Draw once after the pointer leaves so a click outside can commit a typed value.
+                let keep_open = response.hovered() || response.gained_focus() || over_popup
+                    || panel.inner.has_focus() || panel.inner.dragged();
+                ui.ctx().data_mut(|data| {
+                    if keep_open {
+                        data.insert_temp(popup_state, panel.response.rect);
+                    } else {
+                        data.remove::<egui::Rect>(popup_state);
+                    }
+                });
+                if !keep_open {
+                    ui.ctx().request_repaint();
+                }
+            }
+        }
+        if next != snap {
+            self.preferences.map_size_snap = next;
+            self.save_preferences();
+        }
+    }
+
     fn recipe_basics(&mut self, ui: &mut egui::Ui) {
-        const MAGNET_WIDTH: f32 = 26.;
         let old_size = self.project.size;
-        let track_width = (ui.available_width() - MAGNET_WIDTH - ui.spacing().item_spacing.x).max(1.);
+        let track_width = ui.available_width().max(1.);
         let size_label = ui.horizontal(|ui| {
             let start = ui.next_widget_position().x;
             let label = ui.label("Size (m)");
+            self.map_size_magnet(ui);
             let fraction = self.project.size.saturating_sub(1000) as f32 / 5000.;
             let value_x = start + (10. + (track_width - 20.) * fraction - 26.)
                 .clamp(0., (track_width - 52.).max(0.));
@@ -272,42 +348,9 @@ impl Studio {
                 .trailing_fill(true).handle_shape(egui::style::HandleShape::Circle))
                 .labelled_by(size_label.id);
             ui.visuals_mut().selection.bg_fill = selection;
-            let response = ui.add_sized([MAGNET_WIDTH, 22.],
-                egui::Button::selectable(snap != MapSizeSnap::Off, ""));
-            let label = if snap == MapSizeSnap::Off {
-                "Map size snapping is off".to_owned()
-            } else {
-                format!("Map size snaps every {} m", snap.step())
-            };
-            response.widget_info(|| egui::WidgetInfo::selected(
-                egui::WidgetType::Button, response.enabled(), snap != MapSizeSnap::Off, &label,
-            ));
-            let center = response.rect.center();
-            let stroke = Stroke::new(1.3, ui.style().interact(&response).text_color());
-            let magnet = [
-                (-7., -6.), (-7., 1.), (-6., 4.), (-3.5, 6.), (0., 7.), (3.5, 6.), (6., 4.),
-                (7., 1.), (7., -6.), (3., -6.), (3., 1.), (2., 2.5), (0., 3.), (-2., 2.5),
-                (-3., 1.), (-3., -6.), (-7., -6.),
-            ];
-            ui.painter().add(egui::Shape::line(
-                magnet.map(|(x, y)| center + egui::vec2(x, y)).to_vec(), stroke,
-            ));
-            for [left, right] in [[-7., -3.], [3., 7.]] {
-                ui.painter().hline(center.x + left..=center.x + right, center.y - 2., stroke);
-            }
-            let response = response.on_hover_text(&label);
-            egui::Popup::menu(&response).show(|ui| {
-                ui.strong("Map size snapping");
-                for (option, label) in MapSizeSnap::OPTIONS {
-                    if ui.selectable_label(self.preferences.map_size_snap == option, label).clicked() {
-                        self.preferences.map_size_snap = option;
-                        self.save_preferences();
-                        ui.close();
-                    }
-                }
-            });
         });
         if self.project.size != old_size {
+            self.project.size = self.project.size.clamp(1000, 6000);
             let half = self.project.size as f32 / 2.;
             for target in &mut self.project.targets {
                 target.x = target.x.clamp(-half, half);
@@ -1498,7 +1541,7 @@ mod tests {
     }
 
     #[test]
-    fn map_size_magnet_switches_between_25_meter_steps_and_smooth_dragging() {
+    fn map_size_snap_distance_can_be_typed_dragged_and_toggled() {
         let ctx = egui::Context::default();
         workbench_style::install(&ctx);
         let directory = tempfile::tempdir().unwrap();
@@ -1506,6 +1549,7 @@ mod tests {
         let mut app = super::super::tests::fixture(&ctx);
         app.settings_path = Some(path.clone());
         app.project.size = 4003;
+        app.preferences.map_size_snap = MapSizeSnap::Meters50;
         let render = |app: &mut Studio, events| {
             let mut output = ctx.run_ui(egui::RawInput {
                 screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(218., 360.))),
@@ -1514,45 +1558,74 @@ mod tests {
             output.textures_delta.clear();
             output
         };
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos, pressed, button: egui::PointerButton::Primary, modifiers: egui::Modifiers::NONE,
+        };
         let click = |app: &mut Studio, point| {
-            let event = |pressed| egui::Event::PointerButton {
-                pos: point, pressed, button: egui::PointerButton::Primary,
-                modifiers: egui::Modifiers::NONE,
-            };
-            render(app, vec![egui::Event::PointerMoved(point), event(true)]);
-            render(app, vec![event(false)])
+            render(app, vec![egui::Event::PointerMoved(point), button(point, true)]);
+            render(app, vec![button(point, false)]);
         };
         let initial = render(&mut app, vec![]);
         let magnet = initial.shapes.iter().find_map(|shape| match &shape.shape {
             egui::Shape::Path(path) if path.points.len() == 17 => {
-                Some(path.points[4] - egui::vec2(0., 7.))
+                Some(path.points[4] - egui::vec2(0., 7. * 0.72))
             }
             _ => None,
         }).unwrap();
-        assert!(magnet.x + 13. <= 218.);
-        let pick = |app: &mut Studio, label| {
-            click(app, magnet);
-            let open = render(app, vec![]);
-            click(app, recipe_text(&open, label).unwrap());
-        };
-        pick(&mut app, "25 m");
-        assert_eq!(app.project.size, 4003, "A preference change must preserve the current recipe");
-        assert_eq!(mapper_studio::preferences::Preferences::load(&path).unwrap().map_size_snap,
-            MapSizeSnap::Meters25);
-        let probe = |x| Pos2::new(x, magnet.y);
-        click(&mut app, probe(77.));
-        assert_ne!(app.project.size, 4003);
-        assert_eq!(app.project.size % 25, 0);
+        let label = recipe_text(&initial, "Size (m)").unwrap();
+        assert!((magnet.y - label.y).abs() < 2.);
+        assert!((10. ..55.).contains(&(magnet.x - label.x)));
+        assert!(recipe_text(&initial, "Snap distance").is_none());
 
+        let field = |app: &mut Studio, value: u32| {
+            render(app, vec![egui::Event::PointerMoved(magnet)]);
+            let open = render(app, vec![]);
+            assert!(recipe_text(&open, "Snap distance").is_some());
+            recipe_text(&open, &value.to_string()).unwrap_or_else(|| panic!("Missing snap distance {value} m"))
+        };
+        let typed = |app: &mut Studio, current, updated: &str| {
+            let point = field(app, current);
+            click(app, point);
+            render(app, vec![]);
+            render(app, vec![egui::Event::Text(updated.to_owned())]);
+        };
+        typed(&mut app, 50, "37");
+        assert_eq!(app.preferences.map_size_snap.distance(), 50);
+        render(&mut app, vec![egui::Event::Key {
+            key: egui::Key::Enter, physical_key: None, pressed: true, repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert_eq!(app.preferences.map_size_snap, MapSizeSnap::Custom(37));
+        typed(&mut app, 37, "65");
+        click(&mut app, Pos2::new(180., 110.));
+        assert_eq!(app.preferences.map_size_snap, MapSizeSnap::Custom(65));
+
+        let from = field(&mut app, 65);
+        let to = from + egui::vec2(20., 0.);
+        render(&mut app, vec![egui::Event::PointerMoved(from), button(from, true)]);
+        render(&mut app, vec![egui::Event::PointerMoved(to)]);
+        render(&mut app, vec![button(to, false)]);
+        let distance = app.preferences.map_size_snap.distance();
+        assert!(distance > 65, "Dragging to the right should increase the distance");
+        assert_eq!(app.project.size, 4003, "The snap preference must preserve the current recipe");
+        assert_eq!(mapper_studio::preferences::Preferences::load(&path).unwrap().map_size_snap,
+            MapSizeSnap::Custom(distance));
+
+        let probe = |x| Pos2::new(x, magnet.y + 24.);
+        click(&mut app, probe(40.));
+        assert_ne!(app.project.size, 4003);
+        assert_eq!((app.project.size - 1000) % distance, 0);
         let snapped = app.project.size;
-        pick(&mut app, "Off");
+        click(&mut app, magnet);
         assert_eq!(app.project.size, snapped);
         assert_eq!(mapper_studio::preferences::Preferences::load(&path).unwrap().map_size_snap,
-            MapSizeSnap::Off);
-        assert!([77., 81., 87.].into_iter().any(|x| {
+            MapSizeSnap::Disabled(distance));
+        assert!([35., 40., 45.].into_iter().any(|x| {
             click(&mut app, probe(x));
-            app.project.size % 25 != 0
+            (app.project.size - 1000) % distance != 0
         }), "With snapping off the slider must reach values between the snap points");
+        click(&mut app, magnet);
+        assert_eq!(app.preferences.map_size_snap, MapSizeSnap::Custom(distance));
     }
 
     fn rule_choice(output: &egui::FullOutput, label: &str, choice: &str) -> Pos2 {

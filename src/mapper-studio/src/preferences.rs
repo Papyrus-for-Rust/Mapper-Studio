@@ -40,24 +40,51 @@ pub enum MapSizeSnap {
     Meters50,
     Meters100,
     Meters250,
+    Custom(u32),
+    Disabled(u32),
 }
+
 impl MapSizeSnap {
-    pub const OPTIONS: [(Self, &'static str); 5] = [
-        (Self::Off, "Off"),
-        (Self::Meters25, "25 m"),
-        (Self::Meters50, "50 m"),
-        (Self::Meters100, "100 m"),
-        (Self::Meters250, "250 m"),
-    ];
+    pub const MAX_DISTANCE: u32 = 5000;
+
+    pub fn enabled(self) -> bool {
+        !matches!(self, Self::Off | Self::Disabled(_))
+    }
+
+    pub fn distance(self) -> u32 {
+        match self {
+            Self::Meters25 => 25,
+            Self::Off | Self::Meters50 => 50,
+            Self::Meters100 => 100,
+            Self::Meters250 => 250,
+            Self::Custom(distance) | Self::Disabled(distance) => distance.clamp(1, Self::MAX_DISTANCE),
+        }
+    }
+
+    pub fn with_distance(self, distance: u32) -> Self {
+        let distance = distance.clamp(1, Self::MAX_DISTANCE);
+        if self.enabled() {
+            match distance {
+                25 => Self::Meters25,
+                50 => Self::Meters50,
+                100 => Self::Meters100,
+                250 => Self::Meters250,
+                _ => Self::Custom(distance),
+            }
+        } else if distance == 50 {
+            Self::Off
+        } else {
+            Self::Disabled(distance)
+        }
+    }
+
+    pub fn toggled(self) -> Self {
+        let other = if self.enabled() { Self::Off } else { Self::default() };
+        other.with_distance(self.distance())
+    }
 
     pub fn step(self) -> f64 {
-        match self {
-            Self::Off => 0.,
-            Self::Meters25 => 25.,
-            Self::Meters50 => 50.,
-            Self::Meters100 => 100.,
-            Self::Meters250 => 250.,
-        }
+        if self.enabled() { f64::from(self.distance()) } else { 0. }
     }
 }
 
