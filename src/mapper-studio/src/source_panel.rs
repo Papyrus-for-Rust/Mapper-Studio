@@ -414,10 +414,12 @@ impl SourcePanel {
         ui.small("Source for game terrain and assets");
         if let Some(identity) = &project.installation {
             ui.label(format!("{:?} · Windows x64", identity.kind));
-            ui.small(format!(
-                "Native SHA-256: {}…",
-                &identity.native.sha256[..12]
-            ));
+            ui.horizontal(|ui| {
+                ui.small("RustNative.dll fingerprint");
+                if ui.button("Copy SHA-256").on_hover_text(&identity.native.sha256).clicked() {
+                    ui.ctx().copy_text(identity.native.sha256.clone());
+                }
+            });
             ui.small(if identity.scene_manifest.is_some() {
                 "Scene manifest fingerprinted"
             } else {
@@ -450,7 +452,12 @@ impl SourcePanel {
                 self.start(self.selected_root().unwrap(), project, ui.ctx());
             }
         });
-        if self.pending.is_some() {
+        if let Some(pending) = &self.pending {
+            if ui.button("Copy new installation SHA-256")
+                .on_hover_text(&pending.binding.identity.native.sha256).clicked()
+            {
+                ui.ctx().copy_text(pending.binding.identity.native.sha256.clone());
+            }
             if let Some(task) = &self.rebind {
                 if ui.button("Cancel switch").clicked() {
                     task.cancel.store(true, Ordering::Relaxed);
@@ -471,7 +478,7 @@ impl SourcePanel {
             mapper_studio::native_profile::for_source(s, project.native_profile.as_ref()).is_ok()
         });
         if project.installation.is_some() && !native_available {
-            ui.small("Native generation unavailable: import a tested compatibility profile for this DLL and a supported ABI family.");
+            ui.small("Mapper needs a terrain profile for this Rust build. Select a supported installation or import a tested profile below.");
         }
         if mapper_studio::native_preview::is_native(&project.preview_engine) {
             ui.label("Terrain source · Installed Rust");
@@ -484,32 +491,34 @@ impl SourcePanel {
                 project.preview_engine = mapper_studio::native_preview::VERSION.into();
             }
         }
-        ui.collapsing("Native compatibility profile", |ui| {
-            let resolved = project.installation.as_ref().and_then(|s| mapper_studio::native_profile::for_source(s, project.native_profile.as_ref()).ok());
-            if let Some(profile) = &resolved {
-                ui.label(&profile.id);
-                ui.small(format!("ABI: {}", profile.abi));
-                ui.small(if project.native_profile.is_some() { "Profile is saved inside this recipe and generation profiles." } else { "Using retained defaults for older recipes." });
-            } else { ui.small("No matching profile."); }
-            if ui.add_enabled(project.installation.is_some() && self.task.is_none(), egui::Button::new("Import native profile…")).clicked()
-                && let Some(path) = rfd::FileDialog::new().add_filter("Papyrus native profile", &["json"]).pick_file() {
-                let result = mapper_studio::native_profile::Profile::load(&path).and_then(|profile| {
-                    profile.matches(project.installation.as_ref().ok_or("Select a Rust installation first")?)?;
-                    Ok(profile)
-                });
-                match result {
-                    Ok(profile) => { project.native_profile = Some(profile); self.message = "Native profile recorded. Rebuild the terrain preview to apply it.".into(); }
-                    Err(error) => self.message = error,
+        egui::CollapsingHeader::new("Native compatibility profile")
+            .default_open(project.installation.is_some() && !native_available)
+            .show(ui, |ui| {
+                let resolved = project.installation.as_ref().and_then(|s| mapper_studio::native_profile::for_source(s, project.native_profile.as_ref()).ok());
+                if let Some(profile) = &resolved {
+                    ui.label(&profile.id);
+                    ui.small(format!("ABI: {}", profile.abi));
+                    ui.small(if project.native_profile.is_some() { "Profile is saved inside this recipe and generation profiles." } else { "Using retained defaults for older recipes." });
+                } else { ui.small("No matching profile."); }
+                if ui.add_enabled(project.installation.is_some() && self.task.is_none(), egui::Button::new("Import native profile…")).clicked()
+                    && let Some(path) = rfd::FileDialog::new().add_filter("Papyrus native profile", &["json"]).pick_file() {
+                    let result = mapper_studio::native_profile::Profile::load(&path).and_then(|profile| {
+                        profile.matches(project.installation.as_ref().ok_or("Select a Rust installation first")?)?;
+                        Ok(profile)
+                    });
+                    match result {
+                        Ok(profile) => { project.native_profile = Some(profile); self.message = "Native profile recorded. Rebuild the terrain preview to apply it.".into(); }
+                        Err(error) => self.message = error,
+                    }
                 }
-            }
-            if ui.add_enabled(resolved.is_some(), egui::Button::new("Export native profile…")).clicked()
-                && let Some(path) = rfd::FileDialog::new().set_file_name("native-profile.json").add_filter("Papyrus native profile", &["json"]).save_file() {
-                self.message = match mapper_studio::profile::write_document(&path, &resolved.unwrap(), true) {
-                    Ok(()) => "Native compatibility profile exported.".into(), Err(error) => error,
-                };
-            }
-            ui.small("Profiles declare an ABI and settings for an exact DLL fingerprint. New ABI families still require adapter code and testing. Importing a profile does not verify the declared ABI.");
-        });
+                if ui.add_enabled(resolved.is_some(), egui::Button::new("Export native profile…")).clicked()
+                    && let Some(path) = rfd::FileDialog::new().set_file_name("native-profile.json").add_filter("Papyrus native profile", &["json"]).save_file() {
+                    self.message = match mapper_studio::profile::write_document(&path, &resolved.unwrap(), true) {
+                        Ok(()) => "Native compatibility profile exported.".into(), Err(error) => error,
+                    };
+                }
+                ui.small("Profiles declare an ABI and settings for an exact DLL fingerprint. New ABI families still require adapter code and testing. Importing a profile does not verify the declared ABI.");
+            });
     }
 }
 

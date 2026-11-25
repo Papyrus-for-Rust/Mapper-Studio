@@ -361,7 +361,7 @@ pub(super) struct Generation {
     pub(super) recipe_recovery: Option<diagnostic_ui::RecipeSection>,
     overview:Option<persistence::OverviewTask>,
     overview_ready: Option<(persistence::OverviewKey, std::sync::Arc<tempfile::TempPath>)>,
-    validated_recipe: Option<(Project, Result<(), String>)>,
+    validated_recipe: Option<(Project, Result<(), GenerationBlocker>)>,
     count: usize,
     randomize: [bool; 7],
     run: Option<Run>,
@@ -385,10 +385,11 @@ pub(super) struct Generation {
     elapsed: std::collections::HashMap<u64, Duration>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum GenerationBlocker {
     MissingSeed,
     MatchingInstallation,
+    UnsupportedNativeProfile(String),
     AssetsUnavailable,
     QueueFull,
     CheckingOverlays,
@@ -404,7 +405,9 @@ impl GenerationBlocker {
             Self::AssetsUnavailable => "Installation assets unavailable",
             Self::QueueFull => "The generation queue is full. Wait for a map to finish or remove one in Queue.",
             Self::CheckingOverlays => "Checking custom monument content…",
-            Self::Overlay { message, .. } | Self::Other(message) => message,
+            Self::Overlay { message, .. }
+            | Self::UnsupportedNativeProfile(message)
+            | Self::Other(message) => message,
         }
     }
 }
@@ -980,12 +983,13 @@ impl Studio {
             result.recipe.options.filename(result.recipe.size, result.recipe.master_seed, &result.recipe.seeds, &result.label),
             map_archive::Notification::from_recipe(&result.recipe)))
     }
-    fn validate_generation_recipe(recipe: &Project) -> Result<(), String> {
+    fn validate_generation_recipe(recipe: &Project) -> Result<(), GenerationBlocker> {
         recipe.require_master_seed()?;
         recipe.validate()?;
         if mapper_studio::native_preview::is_native(&recipe.preview_engine) {
-            let source = recipe.installation.as_ref().ok_or("Missing native source identity")?;
-            mapper_studio::native_profile::for_source(source, recipe.native_profile.as_ref())?;
+            let source = recipe.installation.as_ref().ok_or(GenerationBlocker::MatchingInstallation)?;
+            mapper_studio::native_profile::for_source(source, recipe.native_profile.as_ref())
+                .map_err(GenerationBlocker::UnsupportedNativeProfile)?;
         }
         Ok(())
     }
@@ -1036,7 +1040,7 @@ impl Studio {
         if working_recipe {
             self.decoration_panel.readiness()?;
         }
-        Self::validate_generation_recipe(recipe)?;
+        Self::validate_generation_recipe(recipe).map_err(|issue| issue.message().to_owned())?;
         self.generation_source_readiness(recipe, true)
             .map_err(|issue| issue.message().to_owned())
     }
@@ -1061,7 +1065,7 @@ impl Studio {
             ));
         }
         if let Some((_, Err(error))) = cached {
-            return Err(error.clone().into());
+            return Err(error.clone());
         }
         self.generation_source_readiness(project, false)
     }
@@ -1531,7 +1535,8 @@ impl Studio {
                     readiness,
                     Err(GenerationBlocker::MatchingInstallation)
                 );
-                if needs_installation && ui.button("Rust installations…").clicked() {
+                let unsupported_native = matches!(readiness, Err(GenerationBlocker::UnsupportedNativeProfile(_)));
+                if (needs_installation || unsupported_native) && ui.button("Rust installations…").clicked() {
                     self.open_installation_settings();
                 }
                 if matches!(readiness, Err(GenerationBlocker::AssetsUnavailable))
@@ -1574,6 +1579,8 @@ impl Studio {
                     });
                 } else if needs_installation {
                     loading_ui::show(ui, loading_ui::Status::Blocked("Matching installation required"));
+                } else if unsupported_native {
+                    loading_ui::show(ui, loading_ui::Status::Blocked("Rust version needs a terrain profile"));
                 } else if let Some(token) = self.source.inspection_token()
                     .or_else(|| self.prefabs.preparation_token())
                 {
@@ -4279,6 +4286,11 @@ mod tests {
         app.project.native_profile = None;
         let error = app.generation_preflight(&app.project, true).unwrap_err();
         assert!(error.contains("native compatibility profile"), "{error}");
+        assert!(error.contains(&"c".repeat(64)), "{error}");
+        assert_eq!(
+            app.generation_readiness(),
+            Err(GenerationBlocker::UnsupportedNativeProfile(error)),
+        );
     }
 
     pub(super) fn require_matching_rust_installation(app: &mut Studio) -> tempfile::TempDir {

@@ -1,0 +1,23 @@
+{
+  "format": "papyrus-native-profile",
+  "schema": 1,
+  "id": "client-b12f0738-preview-1",
+  "abi": "rust-native-five-biomes-1",
+  "native_sha256": "b12f07380464b9832842f136659ce0bbef31697f796217e4890dc13defe1472d",
+  "settings": {
+    "loot_angle_millidegrees": 0,
+    "biome_angle_millidegrees": 90000,
+    "terrain_weights": [
+      3000,
+      3000,
+      4000
+    ],
+    "biome_weights": [
+      4000,
+      1500,
+      1500,
+      3000
+    ],
+    "jungle_weight": 5000
+  }
+}
