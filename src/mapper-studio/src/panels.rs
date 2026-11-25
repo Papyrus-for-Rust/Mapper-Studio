@@ -360,9 +360,19 @@ impl Studio {
             }
         }
         ui.add_space(5.);
+        const SEED_CONTROL_SIZE: f32 = 28.;
+        const SEED_INSET: i8 = 7;
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        let text_width = |text: String| ui.fonts_mut(|fonts| {
+            fonts.layout_no_wrap(text, font.clone(), Color32::PLACEHOLDER).size().x
+        });
+        let inline_width = text_width("Master seed".into()) + text_width(MAX_SEED.to_string())
+            + f32::from(SEED_INSET) * 2. + SEED_CONTROL_SIZE + ui.spacing().item_spacing.x * 2.;
+        let label_above = (ui.available_width() < inline_width).then(|| ui.label("Master seed"));
         ui.horizontal(|ui| {
-            let label = ui.label("Master seed");
-            let field_width = (ui.available_width() - 32. - ui.spacing().item_spacing.x).max(1.);
+            ui.set_height(SEED_CONTROL_SIZE);
+            let label = label_above.unwrap_or_else(|| ui.label("Master seed"));
+            let field_width = (ui.available_width() - SEED_CONTROL_SIZE - ui.spacing().item_spacing.x).max(1.);
             let mut seed_text = if self.project.master_seed == 0 {
                 String::new()
             } else {
@@ -371,15 +381,22 @@ impl Studio {
             let accent = ui.visuals().hyperlink_color;
             let field = ui.scope(|ui| {
                 let visuals = ui.visuals_mut();
-                visuals.selection.stroke = egui::Stroke::new(1., accent);
+                let border = visuals.window_stroke;
+                visuals.selection.stroke = Stroke::new(1., accent);
                 for widget in [&mut visuals.widgets.inactive, &mut visuals.widgets.hovered,
                     &mut visuals.widgets.active] {
                     widget.corner_radius = egui::CornerRadius::same(6);
-                    widget.bg_stroke = egui::Stroke::new(1., accent.gamma_multiply(0.48));
+                    widget.bg_stroke = border;
                 }
                 let id = if in_recipe_tab(ui) { "recipe-settings-master-seed" } else { "recipe-master-seed" };
-                ui.add_sized([field_width, 30.], egui::TextEdit::singleline(&mut seed_text)
-                    .id(egui::Id::new(id)).horizontal_align(egui::Align::Center)
+                ui.add(egui::TextEdit::singleline(&mut seed_text)
+                    .id(egui::Id::new(id))
+                    .desired_width(field_width)
+                    .min_size(Vec2::new(0., SEED_CONTROL_SIZE))
+                    .margin(egui::Margin::symmetric(SEED_INSET, 3))
+                    .font(egui::TextStyle::Body)
+                    .horizontal_align(egui::Align::Center)
+                    .vertical_align(egui::Align::Center)
                     .char_limit(10)).labelled_by(label.id)
             }).inner;
             if field.changed()
@@ -394,8 +411,8 @@ impl Studio {
             } else {
                 ui.visuals().selection.bg_fill
             };
-            let response = ui.add_sized([32., 30.], egui::Button::new("")
-                .fill(dice_fill).corner_radius(7).stroke(egui::Stroke::new(1., accent.gamma_multiply(0.7))))
+            let response = ui.add_sized([SEED_CONTROL_SIZE; 2], egui::Button::new("")
+                .fill(dice_fill).corner_radius(6).stroke(egui::Stroke::new(1., accent.gamma_multiply(0.7))))
                 .on_hover_text("Randomize master seed");
             if response.clicked() {
                 self.randomize_master_seed();
@@ -1536,6 +1553,65 @@ mod tests {
                 let image = textures.raster(&ctx, frame, size);
                 let name = if dark { "recipe-settings-dark.png" } else { "recipe-settings-light.png" };
                 mapper_studio::image_export::write_png(&PathBuf::from(directory).join(name), &image, || false).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn master_seed_stays_centered_and_readable_in_narrow_recipes() {
+        mod snapshot { include!("../examples/support/egui_snapshot.rs"); }
+        for dark in [true, false] {
+            for width in [168, 218] {
+                let ctx = egui::Context::default();
+                ctx.set_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light });
+                workbench_style::install(&ctx);
+                let mut app = super::super::tests::fixture(&ctx);
+                app.project.master_seed = MAX_SEED;
+                let dimensions = [width, 160];
+                let mut textures = snapshot::Textures::default();
+                let mut render = |app: &mut Studio, events| {
+                    let mut output = ctx.run_ui(egui::RawInput {
+                        screen_rect: Some(Rect::from_min_size(Pos2::ZERO,
+                            Vec2::new(dimensions[0] as f32, dimensions[1] as f32))),
+                        focused: true, events, ..Default::default()
+                    }, |ui| app.recipe_basics(ui));
+                    textures.update(&output.textures_delta);
+                    output.textures_delta.clear();
+                    output
+                };
+                render(&mut app, vec![]);
+                let output = render(&mut app, vec![]);
+                let field = ctx.read_response(egui::Id::new("recipe-master-seed")).unwrap().rect;
+                let value = MAX_SEED.to_string();
+                let text = output.shapes.iter().find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.job.text == value => {
+                        let bounds = text.galley.rect.translate(text.pos.to_vec2());
+                        assert!(shape.clip_rect.contains_rect(bounds), "Seed digits were clipped at {width}");
+                        Some(bounds)
+                    }
+                    _ => None,
+                }).unwrap();
+                let label = recipe_text(&output, "Master seed").unwrap();
+                let dice = output.shapes.iter().find_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) if rect.stroke.width == 1.25 && rect.rect.width() == 13. => {
+                        Some(rect.rect.center())
+                    }
+                    _ => None,
+                }).unwrap();
+                assert!(text.center().distance(field.center()) < 2., "Seed text sits off center");
+                assert!((dice.y - field.center().y).abs() < 1., "Randomize is off the input row");
+                if width == 218 {
+                    assert!((label.y - field.center().y).abs() < 2., "Label is off the input row");
+                } else {
+                    assert!(label.y < field.top(), "The narrow layout needs room for all ten digits");
+                }
+
+                if let Some(directory) = std::env::var_os("MAPPER_SEED_FIELD_SNAPSHOTS") {
+                    let image = textures.raster(&ctx, output, dimensions);
+                    let theme = if dark { "dark" } else { "light" };
+                    let name = format!("seed-{theme}-{width}.png");
+                    mapper_studio::image_export::write_png(&PathBuf::from(directory).join(name), &image, || false).unwrap();
+                }
             }
         }
     }
