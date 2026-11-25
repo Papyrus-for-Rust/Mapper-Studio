@@ -2,6 +2,14 @@
 
 Mapper is a Windows desktop app for making custom maps for Rust servers. Build a recipe, generate a map, then adjust monuments or routes before exporting it.
 
+## Live map generation
+
+Watch a 4 km map take shape from the first terrain preview through rivers, monuments, roads, and rails.
+
+![Time-lapse of Mapper generating a 4 km Rust map from start to finish](docs/media/live-map-generation.gif)
+
+This 22-second time-lapse shows a 1 minute 57 second run from the [visualization branch](https://github.com/Papyrus-for-Rust/Mapper-Studio/tree/visualization).
+
 ## Try the beta
 
 1. Download the Windows x64 ZIP from [Releases](https://github.com/Papyrus-for-Rust/Mapper-Studio/releases), extract it, and open `mapper-studio.exe`.
