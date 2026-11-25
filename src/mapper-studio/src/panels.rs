@@ -247,7 +247,7 @@ impl Studio {
         });
     }
 
-    fn map_size_magnet(&mut self, ui: &mut egui::Ui) {
+    fn map_size_magnet(&mut self, ui: &mut egui::Ui, label_y: f32) {
         let snap = self.preferences.map_size_snap;
         let (rect, response) = ui.allocate_exact_size(Vec2::new(18., 18.), Sense::click());
         let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
@@ -257,13 +257,13 @@ impl Studio {
             ui.visuals().weak_text_color()
         };
         let stroke = Stroke::new(1.05, color);
-        let center = rect.center();
+        let scale = 0.72;
+        let center = Pos2::new(rect.center().x, label_y - 0.5 * scale);
         let magnet = [
             (-7., -6.), (-7., 1.), (-6., 4.), (-3.5, 6.), (0., 7.), (3.5, 6.), (6., 4.),
             (7., 1.), (7., -6.), (3., -6.), (3., 1.), (2., 2.5), (0., 3.), (-2., 2.5),
             (-3., 1.), (-3., -6.), (-7., -6.),
         ];
-        let scale = 0.72;
         ui.painter().add(egui::Shape::line(
             magnet.map(|(x, y)| center + egui::vec2(x, y) * scale).to_vec(), stroke,
         ));
@@ -329,7 +329,7 @@ impl Studio {
         let size_label = ui.horizontal(|ui| {
             let start = ui.next_widget_position().x;
             let label = ui.label("Size (m)");
-            self.map_size_magnet(ui);
+            self.map_size_magnet(ui, label.rect.center().y);
             let fraction = self.project.size.saturating_sub(1000) as f32 / 5000.;
             let value_x = start + (10. + (track_width - 20.) * fraction - 26.)
                 .clamp(0., (track_width - 52.).max(0.));
@@ -406,13 +406,8 @@ impl Studio {
                 self.project.master_seed = seed;
                 self.project.refresh_inherited_seeds();
             }
-            let dice_fill = if ui.visuals().dark_mode {
-                Color32::from_rgb(42, 75, 80)
-            } else {
-                ui.visuals().selection.bg_fill
-            };
-            let response = ui.add_sized([SEED_CONTROL_SIZE; 2], egui::Button::new("")
-                .fill(dice_fill).corner_radius(6).stroke(egui::Stroke::new(1., accent.gamma_multiply(0.7))))
+            let (rect, response) = ui.allocate_exact_size(Vec2::splat(SEED_CONTROL_SIZE), Sense::click());
+            let response = response.on_hover_cursor(egui::CursorIcon::PointingHand)
                 .on_hover_text("Randomize master seed");
             if response.clicked() {
                 self.randomize_master_seed();
@@ -420,13 +415,14 @@ impl Studio {
             response.widget_info(|| egui::WidgetInfo::labeled(
                 egui::WidgetType::Button, ui.is_enabled(), "Randomize master seed",
             ));
-            let center = response.rect.center();
-            let color = accent;
-            ui.painter().rect_stroke(Rect::from_center_size(center, Vec2::splat(13.)), 3,
-                egui::Stroke::new(1.25, color), egui::StrokeKind::Inside);
-            for dot in [Vec2::ZERO, egui::vec2(-3., -3.), egui::vec2(3., 3.)] {
-                ui.painter().circle_filled(center + dot, 1., color);
-            }
+            let tint = if !response.enabled() {
+                ui.visuals().weak_text_color()
+            } else if response.hovered() || response.has_focus() {
+                accent
+            } else {
+                ui.visuals().text_color()
+            };
+            settings_dialog::Icon::Refresh.paint(ui, rect.center(), 17., tint);
         });
         let missing = egui::Id::new("missing-master-seed");
         if self.project.master_seed != 0 {
@@ -1568,14 +1564,14 @@ mod tests {
                 let mut app = super::super::tests::fixture(&ctx);
                 app.project.master_seed = MAX_SEED;
                 let dimensions = [width, 160];
-                let mut textures = snapshot::Textures::default();
-                let mut render = |app: &mut Studio, events| {
+                let textures = std::cell::RefCell::new(snapshot::Textures::default());
+                let render = |app: &mut Studio, events| {
                     let mut output = ctx.run_ui(egui::RawInput {
                         screen_rect: Some(Rect::from_min_size(Pos2::ZERO,
                             Vec2::new(dimensions[0] as f32, dimensions[1] as f32))),
                         focused: true, events, ..Default::default()
                     }, |ui| app.recipe_basics(ui));
-                    textures.update(&output.textures_delta);
+                    textures.borrow_mut().update(&output.textures_delta);
                     output.textures_delta.clear();
                     output
                 };
@@ -1592,14 +1588,14 @@ mod tests {
                     _ => None,
                 }).unwrap();
                 let label = recipe_text(&output, "Master seed").unwrap();
-                let dice = output.shapes.iter().find_map(|shape| match &shape.shape {
-                    egui::Shape::Rect(rect) if rect.stroke.width == 1.25 && rect.rect.width() == 13. => {
-                        Some(rect.rect.center())
+                let randomize = output.shapes.iter().find_map(|shape| match &shape.shape {
+                    egui::Shape::Mesh(mesh) if mesh.calc_bounds().size() == Vec2::splat(17.) => {
+                        Some(mesh.calc_bounds().center())
                     }
                     _ => None,
                 }).unwrap();
                 assert!(text.center().distance(field.center()) < 2., "Seed text sits off center");
-                assert!((dice.y - field.center().y).abs() < 1., "Randomize is off the input row");
+                assert!((randomize.y - field.center().y).abs() < 1., "Randomize is off the input row");
                 if width == 218 {
                     assert!((label.y - field.center().y).abs() < 2., "Label is off the input row");
                 } else {
@@ -1607,11 +1603,18 @@ mod tests {
                 }
 
                 if let Some(directory) = std::env::var_os("MAPPER_SEED_FIELD_SNAPSHOTS") {
-                    let image = textures.raster(&ctx, output, dimensions);
+                    let image = textures.borrow().raster(&ctx, output, dimensions);
                     let theme = if dark { "dark" } else { "light" };
                     let name = format!("seed-{theme}-{width}.png");
                     mapper_studio::image_export::write_png(&PathBuf::from(directory).join(name), &image, || false).unwrap();
                 }
+                for pressed in [true, false] {
+                    render(&mut app, vec![egui::Event::PointerMoved(randomize), egui::Event::PointerButton {
+                        pos: randomize, pressed, button: egui::PointerButton::Primary,
+                        modifiers: egui::Modifiers::NONE,
+                    }]);
+                }
+                assert_ne!(app.project.master_seed, MAX_SEED);
             }
         }
     }
@@ -1644,12 +1647,12 @@ mod tests {
         let initial = render(&mut app, vec![]);
         let magnet = initial.shapes.iter().find_map(|shape| match &shape.shape {
             egui::Shape::Path(path) if path.points.len() == 17 => {
-                Some(path.points[4] - egui::vec2(0., 7. * 0.72))
+                Some(path.points[4] - egui::vec2(0., 6.5 * 0.72))
             }
             _ => None,
         }).unwrap();
         let label = recipe_text(&initial, "Size (m)").unwrap();
-        assert!((magnet.y - label.y).abs() < 2.);
+        assert!((magnet.y - label.y).abs() < 1.);
         assert!((10. ..55.).contains(&(magnet.x - label.x)));
         assert!(recipe_text(&initial, "Snap distance").is_none());
 

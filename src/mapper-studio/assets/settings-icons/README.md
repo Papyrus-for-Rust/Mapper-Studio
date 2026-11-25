@@ -8,7 +8,7 @@ byte per pixel in row-major order. Mapper tints the masks at draw time.
 Authors from the upstream icon metadata:
 
 - Google — bank-outline, close, earth, export-variant, folder-outline,
-  map-marker-outline, terrain, train-variant, update.
+  map-marker-outline, refresh, terrain, train-variant, update.
 - Austin Andrews — cube-outline, eye-outline, format-list-checks, pine-tree,
   road-variant, speedometer, theme-light-dark.
 - Michael Irigoyen — sprout-outline, waves.
