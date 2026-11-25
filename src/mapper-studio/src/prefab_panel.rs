@@ -737,6 +737,7 @@ impl PrefabPanel {
         }
         if !ready && !self.message.is_empty() {
             diagnostic_ui::message(ui, &self.message, "installation-assets-error");
+            diagnostic_ui::copy_error(ui, &self.message, None);
         }
         if !self.preparation_details.is_empty() || !self.failed_stamps.is_empty() || (ready && !self.message.is_empty()) {
             ui.collapsing("Preparation details", |ui| {

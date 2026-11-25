@@ -1484,6 +1484,7 @@ mod roadside_road_check;
 pub mod roadside_source;
 pub mod roadside_stamps;
 pub mod storage;
+pub mod support_snapshot;
 
 pub mod rail_texture_stage;
 pub mod rail_topology_stage;

@@ -320,7 +320,10 @@ impl Panel {
                 }
                 match &self.notice {
                     Some(Ok(())) => { ui.weak("Saved to the custom monument library."); }
-                    Some(Err(error)) => { ui.colored_label(ui.visuals().error_fg_color, error); }
+                    Some(Err(error)) => {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                        crate::diagnostic_ui::copy_error(ui, error, None);
+                    }
                     None => {}
                 }
             });

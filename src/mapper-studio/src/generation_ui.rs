@@ -357,7 +357,7 @@ pub(super) struct Generation {
     pub(super) recipe_recovery: Option<diagnostic_ui::RecipeSection>,
     overview:Option<persistence::OverviewTask>,
     overview_ready: Option<(persistence::OverviewKey, std::sync::Arc<tempfile::TempPath>)>,
-    validated_recipe: Option<(Project, Result<(), String>)>,
+    validated_recipe: Option<(Project, Result<(), GenerationBlocker>)>,
     count: usize,
     randomize: [bool; 7],
     run: Option<Run>,
@@ -383,10 +383,11 @@ pub(super) struct Generation {
     elapsed: std::collections::HashMap<u64, Duration>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum GenerationBlocker {
     MissingSeed,
     MatchingInstallation,
+    UnsupportedNativeProfile(String),
     AssetsUnavailable,
     QueueFull,
     CheckingOverlays,
@@ -402,7 +403,9 @@ impl GenerationBlocker {
             Self::AssetsUnavailable => "Installation assets unavailable",
             Self::QueueFull => "The generation queue is full. Wait for a map to finish or remove one in Queue.",
             Self::CheckingOverlays => "Checking custom monument content…",
-            Self::Overlay { message, .. } | Self::Other(message) => message,
+            Self::Overlay { message, .. }
+            | Self::UnsupportedNativeProfile(message)
+            | Self::Other(message) => message,
         }
     }
 }
@@ -836,6 +839,7 @@ impl Studio {
                     });
                     if !detail.is_empty() {
                         ui.add_space(6.);
+                        diagnostic_ui::copy_error(ui, detail, Some(&self.generation.queue[index].recipe));
                         ui.collapsing("Technical report", |ui| {
                             diagnostic_ui::copy_details(ui, detail);
                             if summary.as_ref() != detail {
@@ -989,12 +993,13 @@ impl Studio {
             result.recipe.options.filename(result.recipe.size, result.recipe.master_seed, &result.recipe.seeds, &result.label),
             map_archive::Notification::from_recipe(&result.recipe)))
     }
-    fn validate_generation_recipe(recipe: &Project) -> Result<(), String> {
+    fn validate_generation_recipe(recipe: &Project) -> Result<(), GenerationBlocker> {
         recipe.require_master_seed()?;
         recipe.validate()?;
         if mapper_studio::native_preview::is_native(&recipe.preview_engine) {
-            let source = recipe.installation.as_ref().ok_or("Missing native source identity")?;
-            mapper_studio::native_profile::for_source(source, recipe.native_profile.as_ref())?;
+            let source = recipe.installation.as_ref().ok_or(GenerationBlocker::MatchingInstallation)?;
+            mapper_studio::native_profile::for_source(source, recipe.native_profile.as_ref())
+                .map_err(GenerationBlocker::UnsupportedNativeProfile)?;
         }
         Ok(())
     }
@@ -1045,7 +1050,7 @@ impl Studio {
         if working_recipe {
             self.decoration_panel.readiness()?;
         }
-        Self::validate_generation_recipe(recipe)?;
+        Self::validate_generation_recipe(recipe).map_err(|issue| issue.message().to_owned())?;
         self.generation_source_readiness(recipe, true)
             .map_err(|issue| issue.message().to_owned())
     }
@@ -1070,7 +1075,7 @@ impl Studio {
             ));
         }
         if let Some((_, Err(error))) = cached {
-            return Err(error.clone().into());
+            return Err(error.clone());
         }
         self.generation_source_readiness(project, false)
     }
@@ -1550,7 +1555,7 @@ impl Studio {
 
     fn generation_blocker(&mut self, ui: &mut egui::Ui, blocker: &GenerationBlocker) {
         match blocker {
-            GenerationBlocker::MatchingInstallation => {
+            GenerationBlocker::MatchingInstallation | GenerationBlocker::UnsupportedNativeProfile(_) => {
                 if ui.button("Rust installations…").on_hover_text(blocker.message()).clicked() {
                     self.open_installation_settings();
                 }
@@ -1583,6 +1588,20 @@ impl Studio {
             }
             _ => loading_ui::show(ui, loading_ui::Status::Blocked(blocker.message())),
         }
+        if !self.generation_in_progress() && matches!(blocker,
+            GenerationBlocker::MatchingInstallation
+                | GenerationBlocker::UnsupportedNativeProfile(_)
+                | GenerationBlocker::AssetsUnavailable)
+        {
+            if ui.available_width() >= 127. {
+                diagnostic_ui::copy_error(ui, blocker.message(), None);
+            } else {
+                ui.menu_button("Details", |ui| {
+                    ui.label(diagnostic_ui::summary(blocker.message()).as_ref());
+                    diagnostic_ui::copy_error(ui, blocker.message(), None);
+                });
+            }
+        }
     }
 
     pub(super) fn recipe_generate(&mut self, ui: &mut egui::Ui) {
@@ -1593,6 +1612,7 @@ impl Studio {
         let recovery = blocker.filter(|error| !matches!(error, GenerationBlocker::MissingSeed));
         let show_setup = preparation.is_some()
             && !matches!(recovery, Some(GenerationBlocker::MatchingInstallation
+                | GenerationBlocker::UnsupportedNativeProfile(_)
                 | GenerationBlocker::AssetsUnavailable | GenerationBlocker::Overlay { .. }));
         egui::Panel::bottom("recipe-generate").exact_size(44.).resizable(false)
             .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(4, 5)))
@@ -2582,6 +2602,7 @@ impl Studio {
                     let summary = diagnostic_ui::summary(detail);
                     ui.label(summary.as_ref());
                     if !detail.is_empty() {
+                        diagnostic_ui::copy_error(ui, detail, Some(&result.recipe));
                         diagnostic_ui::copy_details(ui, detail);
                         if summary.as_ref() != detail {
                             ui.collapsing("Technical report", |ui| diagnostic_ui::report_preview(ui, detail));
@@ -2600,6 +2621,7 @@ impl Studio {
                     let detail = &result.archive_issue;
                     let summary = diagnostic_ui::summary(detail);
                     ui.label(summary.as_ref());
+                    diagnostic_ui::copy_error(ui, detail, Some(&result.recipe));
                     if summary.as_ref() != detail {
                         ui.collapsing("Technical report", |ui| diagnostic_ui::details(ui, detail));
                     }
@@ -3830,6 +3852,11 @@ mod tests {
         app.project.native_profile = None;
         let error = app.generation_preflight(&app.project, true).unwrap_err();
         assert!(error.contains("native compatibility profile"), "{error}");
+        assert!(error.contains(&"c".repeat(64)), "{error}");
+        assert_eq!(
+            app.generation_readiness(),
+            Err(GenerationBlocker::UnsupportedNativeProfile(error)),
+        );
     }
 
     pub(super) fn require_matching_rust_installation(app: &mut Studio) -> tempfile::TempDir {
@@ -5702,6 +5729,14 @@ mod tests {
     #[test]
     fn queue_issue_popover_saves_its_recipe_and_copies_the_full_report() {
         let ctx = egui::Context::default();
+        diagnostic_ui::set_support_environment(&ctx, diagnostic_ui::SupportEnvironment {
+            version: "0.1.0-beta.1".into(),
+            installation: None,
+            profile: None,
+        });
+        let mut app = super::super::tests::fixture(&ctx);
+        let _installation = require_matching_rust_installation(&mut app);
+        let expected_hash = app.project.installation.as_ref().unwrap().native.sha256.clone();
         workbench_style::install(&ctx);
         ctx.global_style_mut(|style| style.animation_time = 0.);
         let report = format!(
@@ -5711,7 +5746,7 @@ mod tests {
         let item = std::cell::RefCell::new(QueueItem {
             id: 1,
             label: "Seed 24680 · 3".into(),
-            recipe: Project::default(),
+            recipe: app.project.clone(),
             state: State::Incomplete,
             detail: report.clone(),
         });
@@ -5797,6 +5832,20 @@ mod tests {
         assert!(copied.platform_output.commands.iter().any(|command| {
             matches!(command, egui::OutputCommand::CopyText(value) if value == &report)
         }));
+        let support = click(position(&render(vec![]), "Copy error message"));
+        let copied = support.platform_output.commands.iter().find_map(|command| {
+            match command {
+                egui::OutputCommand::CopyText(value) => Some(value),
+                _ => None,
+            }
+        }).expect("the error action writes to the clipboard");
+        let (message, code) = copied.split_once("\n\nMapper support code\n").unwrap();
+        assert_eq!(message, report);
+        let decoded = mapper_studio::support_snapshot::Snapshot::decode(code).unwrap();
+        let decoded = serde_json::to_value(decoded).unwrap();
+        assert_eq!(decoded["mapper_version"], "0.1.0-beta.1");
+        assert_eq!(decoded["rust"]["native_sha256"], expected_hash);
+
         click(position(&render(vec![]), "Edit recipe"));
         assert_eq!(action.get(), Some(QueueAction::LoadRecipe(1)));
 

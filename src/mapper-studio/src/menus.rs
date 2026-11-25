@@ -55,6 +55,43 @@ fn show_application_menu(
 }
 
 impl Studio {
+    pub(super) fn support_snapshot_window(&self, ctx: &egui::Context) {
+        let id = egui::Id::new("support-snapshot");
+        let Some((preview, code)) = ctx.data(|data| data.get_temp::<(String, String)>(id)) else {
+            return;
+        };
+
+        let mut open = true;
+        egui::Window::new("Support snapshot")
+            .id(id)
+            .open(&mut open)
+            .default_width(520.)
+            .show(ctx, |ui| {
+                diagnostic_ui::support_controls(ui, &preview, &code);
+            });
+        if !open {
+            ctx.data_mut(|data| data.remove::<(String, String)>(id));
+        }
+    }
+
+    pub(super) fn support_environment(&self) -> diagnostic_ui::SupportEnvironment {
+        diagnostic_ui::SupportEnvironment {
+            version: self.updates.version().unwrap_or(env!("CARGO_PKG_VERSION")).into(),
+            installation: self.source.inspected_installation().cloned(),
+            profile: self.project.native_profile.clone(),
+        }
+    }
+
+    fn open_support_snapshot(&mut self, ctx: &egui::Context) {
+        let snapshot = self.support_environment().snapshot(None);
+        match (serde_json::to_string_pretty(&snapshot), snapshot.encode()) {
+            (Ok(preview), Ok(code)) => ctx.data_mut(|data| {
+                data.insert_temp(egui::Id::new("support-snapshot"), (preview, code));
+            }),
+            _ => self.status = "Could not create the support snapshot.".into(),
+        }
+    }
+
     pub(super) fn map_tab_path(&self) -> Option<egui_dock::TabPath> {
         self.dock.find_tab(&Tab::Map).or_else(|| {
             self.dock.find_tab_from(|tab| matches!(tab, Tab::Generated(_)))
@@ -456,6 +493,10 @@ impl Studio {
             "Help" => {
                 ui.label("Mapper for Rust");
                 ui.small(format!("Version {}", self.updates.version().unwrap_or(env!("CARGO_PKG_VERSION"))));
+                if ui.button("Support snapshot…").clicked() {
+                    self.open_support_snapshot(ui.ctx());
+                    ui.close();
+                }
                 if ui.button("Check for updates…").clicked() {
                     self.updates.check(ui.ctx(), true);
                     ui.close();

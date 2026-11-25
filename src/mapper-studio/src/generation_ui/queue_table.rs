@@ -778,6 +778,7 @@ pub(super) fn queue_table_actions(
                             action = Some(QueueAction::SaveRecipe(id));
                         }
                         if !item.detail.is_empty() {
+                            diagnostic_ui::copy_error(ui, &item.detail, Some(&item.recipe));
                             diagnostic_ui::copy_details(ui, &item.detail);
                         }
                     });
