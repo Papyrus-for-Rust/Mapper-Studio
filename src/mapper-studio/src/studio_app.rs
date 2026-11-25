@@ -87,7 +87,7 @@ fn layout() -> DockState<Tab> {
     );
     dock.main_surface_mut().split_below(outliner, 0.5, vec![Tab::Inspector]);
     dock.main_surface_mut()
-        .split_below(center, 0.85, vec![Tab::Queue]);
+        .split_below(center, 0.81, vec![Tab::Queue]);
     dock
 }
 #[derive(Clone, Copy)]
@@ -589,6 +589,10 @@ impl Studio {
         }
     }
     fn start_placement(&mut self, ctx: &egui::Context) {
+        if self.queue_primary_paused() {
+            self.generation.defer_queue_placement();
+            return;
+        }
         if self.task.is_some() || self.placement_task.is_some() || !self.preview_current() {
             return;
         }
@@ -2315,7 +2319,7 @@ impl TabViewer for Tabs<'_> {
         matches!(tab, Tab::Generated(_) | Tab::Nodes) || (*tab == Tab::Map && self.map_count > 1)
     }
     fn scroll_bars(&self, tab: &Tab) -> [bool; 2] {
-        [!matches!(tab, Tab::Nodes | Tab::Recipe); 2]
+        [!matches!(tab, Tab::Nodes | Tab::Recipe | Tab::Queue); 2]
     }
     fn on_close(&mut self, tab: &mut Tab) -> OnCloseResponse {
         if *tab == Tab::Nodes {
@@ -2499,7 +2503,7 @@ impl eframe::App for Studio {
                 .and_then(|root| self.prefabs.prepared_identities(&self.project, root)),
             road_layout: self.generation.active_edit_road_layout(),
         };
-        if self
+        if !self.queue_primary_paused() && self
             .composition
             .tick(&self.project, composition_inputs, &ctx)
         {
@@ -2565,7 +2569,6 @@ impl eframe::App for Studio {
         let selected_before_dock = self.selected;
         let snapshot = self.visible_generated_tab();
         let mut dock = std::mem::replace(&mut self.dock, DockState::new(vec![]));
-        self.generation_status(ui);
         if self.content.monument_settings_open() {
             self.with_recipe_draft(|studio| {
                 let identities = studio.source.bound_root_ref(&studio.project)
@@ -2611,6 +2614,7 @@ impl eframe::App for Studio {
             && !self.project_io.busy() && self.pending.is_none();
         self.updates.show(&ctx, self.path.as_deref(), can_restart);
         self.export_options(&ctx);
+        self.handle_ui_scale_shortcuts(&ctx);
         self.persist_preferences();
         self.history.finish_snapshot(
             before,
