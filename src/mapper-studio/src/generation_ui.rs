@@ -884,6 +884,21 @@ impl Studio {
                 .corner_radius(0.)
                 .fill(workbench_style::PRIMARY_ACTION))
                 .on_hover_text(format!("{:.0}% of this phase", fraction * 100.));
+        } else if active && self.live_generation && rect.height() >= 3. {
+            let track = Rect::from_min_size(rect.min, egui::vec2(rect.width(), 2.));
+            let accent = ui.visuals().hyperlink_color;
+            painter.rect_filled(track, 0., accent.gamma_multiply(0.23));
+            if !self.preferences.reduce_motion {
+                let length = (track.width() * 0.18).min(84.);
+                let phase = ui.input(|input| (input.time / 1.8).fract()) as f32;
+                let x = track.left() - length + (track.width() + length) * phase;
+                let pulse = Rect::from_min_size(egui::pos2(x, track.top()), egui::vec2(length, track.height()));
+                let visible = pulse.intersect(track);
+                if visible.is_positive() {
+                    painter.rect_filled(visible, 0., accent.gamma_multiply(0.72));
+                }
+                ui.ctx().request_repaint_after(Duration::from_millis(50));
+            }
         }
     }
 

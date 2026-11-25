@@ -151,15 +151,18 @@ pub fn generate(
     })
 }
 
-pub const SNAPSHOT_RESOLUTION: usize = 129;
+pub const SNAPSHOT_RESOLUTION: usize = 257;
+const LEGACY_SNAPSHOT_RESOLUTION: usize = 129;
 /// Bounded display-only transport. Never accepted as terrain or saved in the raw cache.
 pub fn decode_snapshot(bytes: &[u8], stage: u32) -> Result<ColorImage, String> {
-    let n = SNAPSHOT_RESOLUTION;
+    let invalid = || "Invalid native stage snapshot".to_owned();
+    let header = bytes.get(..12).ok_or_else(invalid)?;
+    let n = u32::from_le_bytes(header[8..12].try_into().map_err(|_| invalid())?) as usize;
     if !(1..=4).contains(&stage)
+        || &header[..4] != b"PNS1"
+        || header[4..8] != stage.to_le_bytes()
+        || !matches!(n, SNAPSHOT_RESOLUTION | LEGACY_SNAPSHOT_RESOLUTION)
         || bytes.len() != 12 + n * n * 4
-        || &bytes[..4] != b"PNS1"
-        || bytes[4..8] != stage.to_le_bytes()
-        || bytes[8..12] != (n as u32).to_le_bytes()
         || bytes[12..].chunks_exact(4).any(|p| p[3] != 255)
     {
         return Err("Invalid native stage snapshot".into());
@@ -300,11 +303,13 @@ fn generate_inner(
             for next in ((snapshot_stage + 1)..=4).rev() {
                 if let Ok(file) = File::open(temp.path().join(format!("stage-{next}.bin"))) {
                     let mut bytes = Vec::new();
-                    file.take((13 + SNAPSHOT_RESOLUTION * SNAPSHOT_RESOLUTION * 4) as u64)
-                        .read_to_end(&mut bytes)
-                        .map_err(|e| e.to_string())?;
-                    let image = decode_snapshot(&bytes, next)?;
                     snapshot_stage = next;
+                    if file.take((13 + SNAPSHOT_RESOLUTION * SNAPSHOT_RESOLUTION * 4) as u64)
+                        .read_to_end(&mut bytes).is_err()
+                    {
+                        break;
+                    }
+                    let Ok(image) = decode_snapshot(&bytes, next) else { break };
                     let labels = [
                         "",
                         "Terrain ready",
@@ -468,6 +473,11 @@ mod tests {
         assert!(decode_snapshot(&bytes, 2).is_err());
         bytes[8] = 0;
         assert!(decode_snapshot(&bytes, 2).is_err());
+
+        let legacy = LEGACY_SNAPSHOT_RESOLUTION;
+        bytes.resize(12 + legacy * legacy * 4, 255);
+        bytes[8..12].copy_from_slice(&(legacy as u32).to_le_bytes());
+        assert_eq!(decode_snapshot(&bytes, 2).unwrap().size, [legacy; 2]);
     }
     #[test]
     fn bounded_transport_rejects_corruption_and_preserves_bgra_orientation() {
