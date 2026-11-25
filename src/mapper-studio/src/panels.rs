@@ -2542,7 +2542,6 @@ mod tests {
                         |ui| {
                             let mut dock = std::mem::replace(&mut app.dock, DockState::new(vec![]));
                             egui::Panel::top("toolbar").show(ui, |ui| app.toolbar(ui));
-                            app.generation_status(ui);
                             egui::CentralPanel::default().frame(workbench_style::dock_frame(ui)).show(ui, |ui| {
                                 let mut tabs = Tabs::new(&mut app, None, &dock);
                                 DockArea::new(&mut dock).style(workbench_style::dock(ui))

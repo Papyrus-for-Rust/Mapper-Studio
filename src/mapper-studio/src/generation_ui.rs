@@ -1513,99 +1513,75 @@ impl Studio {
         (stage.into(), fraction)
     }
 
-    pub(super) fn generation_status(&mut self, ui: &mut egui::Ui) {
-        let readiness = self.generation_readiness();
-        let preparing = self.source.inspection_token().is_some() || self.prefabs.preparation_token().is_some();
-        if !self.generation_in_progress() && !preparing
-            && matches!(readiness, Ok(()) | Err(GenerationBlocker::MissingSeed))
-        {
-            return;
-        }
-
-        egui::Panel::bottom("generation-status").exact_size(34.).resizable(false)
-            .frame(egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).inner_margin(egui::Margin::symmetric(12, 4)))
-            .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if matches!(readiness, Err(GenerationBlocker::CheckingOverlays)) {
-                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
-                }
-                let cancel = if self.generation.busy() { "Cancel all" } else { "Cancel preview" };
-                if self.generation_in_progress() && ui.button(cancel).clicked() {
-                    self.cancel_generation();
-                    self.status = "Generation cancelled.".into();
-                }
-                let needs_installation = matches!(
-                    readiness,
-                    Err(GenerationBlocker::MatchingInstallation)
-                );
-                if needs_installation && ui.button("Rust installations…").clicked() {
+    fn generation_blocker(&mut self, ui: &mut egui::Ui, blocker: &GenerationBlocker) {
+        match blocker {
+            GenerationBlocker::MatchingInstallation => {
+                if ui.button("Rust installations…").on_hover_text(blocker.message()).clicked() {
                     self.open_installation_settings();
                 }
-                if matches!(readiness, Err(GenerationBlocker::AssetsUnavailable))
-                    && ui.button("Retry asset loading").clicked()
-                {
-                    self.prefabs.discover(
-                        &self.project,
-                        self.source.bound_root(&self.project),
-                        ui.ctx(),
-                    );
+            }
+            GenerationBlocker::AssetsUnavailable => {
+                if ui.button("Retry asset loading").on_hover_text(blocker.message()).clicked() {
+                    self.prefabs.discover(&self.project, self.source.bound_root(&self.project), ui.ctx());
                 }
-                let overlay_blocked = if let Err(GenerationBlocker::Overlay { anchor, message }) = &readiness {
-                    if ui.button("Fix overlay…").on_hover_text(message).clicked() {
-                        self.with_recipe_draft(|studio| {
-                            let recipe = &studio.project;
-                            let identities = studio.source.bound_root_ref(recipe)
-                                .and_then(|root| studio.prefabs.prepared_identities(recipe, root));
-                            let path = identities.as_ref().and_then(|ids| ids.prefab_path(*anchor))
-                                .unwrap_or_default().to_owned();
-                            let name = studio.monument_icons.name(Some(&path), "Monument overlay");
-                            studio.content.open_overlay_recovery(recipe, *anchor, path, name, message.clone());
-                        });
-                    }
-                    ui.ctx().request_repaint_after(std::time::Duration::from_secs(2));
-                    true
-                } else {
-                    false
-                };
-                if self.generation_in_progress() {
-                    if matches!(readiness, Err(GenerationBlocker::QueueFull)) {
-                        ui.weak("Queue full").on_hover_text(GenerationBlocker::QueueFull.message());
-                    }
-                    let (stage, fraction) = self.generation_stage();
-                    let batch = self.generation.run.as_ref()
-                        .map(|run| (run.finished - run.start + 1, self.generation.queue.len() - run.start));
-                    loading_ui::show(ui, loading_ui::Status::Generating {
-                        stage: &stage,
-                        fraction,
-                        batch,
+            }
+            GenerationBlocker::Overlay { anchor, message } => {
+                if ui.button("Fix overlay…").on_hover_text(message).clicked() {
+                    self.with_recipe_draft(|studio| {
+                        let recipe = &studio.project;
+                        let identities = studio.source.bound_root_ref(recipe)
+                            .and_then(|root| studio.prefabs.prepared_identities(recipe, root));
+                        let path = identities.as_ref().and_then(|ids| ids.prefab_path(*anchor))
+                            .unwrap_or_default().to_owned();
+                        let name = studio.monument_icons.name(Some(&path), "Monument overlay");
+                        studio.content.open_overlay_recovery(recipe, *anchor, path, name, message.clone());
                     });
-                } else if needs_installation {
-                    loading_ui::show(ui, loading_ui::Status::Blocked("Matching installation required"));
-                } else if let Some(token) = self.source.inspection_token()
-                    .or_else(|| self.prefabs.preparation_token())
-                {
-                    loading_ui::show(ui, loading_ui::Status::Preparing(token));
-                } else if !overlay_blocked && let Err(error) = &readiness
-                    && !matches!(error, GenerationBlocker::MissingSeed)
-                {
-                    loading_ui::show(ui, loading_ui::Status::Blocked(error.message()));
                 }
-            });
-        });
+                ui.ctx().request_repaint_after(std::time::Duration::from_secs(2));
+            }
+            GenerationBlocker::CheckingOverlays => {
+                ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
+                loading_ui::show(ui, loading_ui::Status::Blocked(blocker.message()));
+            }
+            GenerationBlocker::QueueFull => {
+                ui.weak("Queue full").on_hover_text(blocker.message());
+            }
+            _ => loading_ui::show(ui, loading_ui::Status::Blocked(blocker.message())),
+        }
     }
 
     pub(super) fn recipe_generate(&mut self, ui: &mut egui::Ui) {
+        let readiness = self.generation_readiness();
+        let blocker = readiness.as_ref().err();
+        let preparation = self.source.inspection_token()
+            .or_else(|| self.prefabs.preparation_token()).cloned();
+        let recovery = blocker.filter(|error| !matches!(error, GenerationBlocker::MissingSeed));
+        let show_setup = preparation.is_some()
+            && !matches!(recovery, Some(GenerationBlocker::MatchingInstallation
+                | GenerationBlocker::AssetsUnavailable | GenerationBlocker::Overlay { .. }));
         egui::Panel::bottom("recipe-generate").exact_size(44.).resizable(false)
             .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(4, 5)))
             .show(ui, |ui| {
-                let readiness = self.generation_readiness();
                 let width = (ui.available_width() * 0.92).clamp(1., 260.);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.;
                     ui.add_space(((ui.available_width() - width) * 0.5).max(0.));
-                    self.generate_split_button(ui, width, readiness.is_ok(), readiness.as_ref().err());
+                    self.generate_split_button(ui, width, readiness.is_ok(), blocker);
                 });
             });
+        if show_setup || recovery.is_some() {
+            egui::Panel::bottom("recipe-readiness").exact_size(ui.spacing().interact_size.y)
+                .resizable(false).frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(4, 0)))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if let Some(token) = preparation.as_ref().filter(|_| show_setup) {
+                            loading_ui::show(ui, loading_ui::Status::Preparing(token));
+                        } else if let Some(error) = recovery {
+                            self.generation_blocker(ui, error);
+                        }
+                    });
+                });
+        }
     }
 
     fn generate_split_button(
@@ -2229,10 +2205,24 @@ impl Studio {
             .or_else(|| self.generation.queue.iter().find(|job| job.id == id).map(|job| job.label.as_str()))
             .unwrap_or("Map unavailable").to_owned()
     }
-    fn queue_details(&mut self, ui: &mut egui::Ui, locate_in_menu: bool) {
+    fn queue_actions(&mut self, ui: &mut egui::Ui, locate_in_menu: bool) {
         let config = MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
-        MenuButton::new("Details").config(config).ui(ui, |ui| {
+        MenuButton::new("Actions").config(config).ui(ui, |ui| {
             ui.set_max_width(560.);
+            if self.generation_in_progress() {
+                let running = self.generation.busy();
+                let (label, help) = if running {
+                    ("Cancel all", "Stop the running map and cancel all waiting maps.")
+                } else {
+                    ("Cancel preview", "Stop the current recipe preview.")
+                };
+                if ui.button(label).on_hover_text(help).clicked() {
+                    self.cancel_generation();
+                    self.status = if running { "Generation cancelled." } else { "Preview cancelled." }.into();
+                    ui.close();
+                    return;
+                }
+            }
             if locate_in_menu && self.generation.busy() && ui.button("Locate running map").clicked() {
                 self.locate_running_map(ui.ctx());
                 ui.close();
@@ -2418,7 +2408,7 @@ impl Studio {
             .show(ui, |ui| {
                 let font = egui::TextStyle::Button.resolve(ui.style());
                 let control_width = ui.fonts_mut(|fonts| {
-                    ["Details", "Locate"].into_iter()
+                    ["Actions", "Locate"].into_iter()
                         .chain(QueueFilter::ALL.map(QueueFilter::caption))
                         .map(|label| fonts.layout_no_wrap(
                             label.into(), font.clone(), Color32::PLACEHOLDER,
@@ -2609,7 +2599,7 @@ impl Studio {
     }
 
     fn queue_controls(&mut self, ui: &mut egui::Ui, filter: QueueFilter, locate_in_menu: bool) {
-        self.queue_details(ui, locate_in_menu);
+        self.queue_actions(ui, locate_in_menu);
         if !locate_in_menu && self.generation.busy()
             && ui.button("Locate").on_hover_text("Scroll to the running map.").clicked()
         {
@@ -3705,6 +3695,9 @@ fn queue_card(
                     }
                     ui.horizontal(|ui| {
                         ui.set_min_height(ui.spacing().interact_size.y);
+                        if item.state == State::Incomplete {
+                            ui.spacing_mut().button_padding.x = 5.;
+                        }
                         if item.state == State::Running {
                             let mut width = ui.available_width();
                             if stage.1.is_some() {
@@ -6087,7 +6080,7 @@ mod tests {
             }
         };
         let _ = render(&mut app, vec![]);
-        let details = position(&render(&mut app, vec![]), "Details");
+        let details = position(&render(&mut app, vec![]), "Actions");
         click(&mut app, details);
         let menu = render(&mut app, vec![]);
         let clear = position(&menu, "Clear queue history");
@@ -6478,7 +6471,7 @@ mod tests {
         app.generation.queue_filter = QueueFilter::Issues;
         let running = app.task.as_ref().unwrap().cancel.clone();
         let revision = app.generation.revision;
-        click(&mut app, "Details");
+        click(&mut app, "Actions");
         click(&mut app, "Remove waiting maps (2)");
         app.finish_map_tab_requests();
         assert!(!running.load(Ordering::Relaxed));
@@ -6821,7 +6814,7 @@ mod tests {
         app.generation.queue_filter = QueueFilter::Issues;
         let compact = render(&mut app, vec![]);
         let toolbar_y = visible(&compact, "Locate").unwrap().y;
-        for control in ["Details", "Issues"] {
+        for control in ["Actions", "Issues"] {
             assert!((visible(&compact, control).unwrap().y - toolbar_y).abs() < 1.);
         }
         assert!(visible(&compact, "Seed 5").unwrap().y > toolbar_y);
@@ -6839,7 +6832,7 @@ mod tests {
         let shallow = render(&mut app, vec![]);
         assert!(visible(&shallow, "Issues").is_some());
         assert!(visible(&shallow, "Locate").is_none());
-        for event in click(visible(&shallow, "Details").unwrap()) { render(&mut app, event); }
+        for event in click(visible(&shallow, "Actions").unwrap()) { render(&mut app, event); }
         let menu = render(&mut app, vec![]);
         for event in click(visible(&menu, "Locate running map").unwrap()) { render(&mut app, event); }
         assert_eq!(app.generation.queue_filter, QueueFilter::All);
@@ -7100,7 +7093,6 @@ mod tests {
                             egui::Panel::top("toolbar")
                                 .frame(egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).inner_margin(egui::Margin::symmetric(6, 3)))
                                 .show(ui, |ui| app.toolbar(ui));
-                            app.generation_status(ui);
                             egui::CentralPanel::default().frame(workbench_style::dock_frame(ui)).show(ui, |ui| {
                                 let mut tabs = Tabs::new(&mut app, snapshot, &dock);
                                 DockArea::new(&mut dock).style(workbench_style::dock(ui))
@@ -7144,14 +7136,20 @@ mod tests {
                             return shape.clip_rect.contains_rect(rect);
                         }
                         false
-                    }), "Missing visible queue action {action} at {size:?}\n{text}");
+                    }), "Missing visible queue action {action} at {size:?}: {:?}\n{text}",
+                        output.shapes.iter().filter_map(|shape| match &shape.shape {
+                            egui::Shape::Text(label) if label.galley.job.text == action => {
+                                Some((label.galley.rect.translate(label.pos.to_vec2()), shape.clip_rect))
+                            }
+                            _ => None,
+                        }).collect::<Vec<_>>());
                 }
                 assert!(text.contains("Queue"), "{text}");
                 assert!(text.lines().any(|line| line == "Placed"), "{text}");
                 assert!(text.lines().any(|line| line == "Catalog"), "{text}");
                 assert!(text.contains("Seed 24680"), "{text}");
                 assert!(text.contains("Loading saved terrain"), "{text}");
-                assert!(text.contains("Map 2 of 5 · Loading saved terrain"), "{text}");
+                assert!(text.lines().any(|line| line == "Actions"), "{text}");
                 let queue = bounds(Tab::Queue);
                 assert!(!output.shapes.iter().any(|shape| match &shape.shape {
                     egui::Shape::Text(label) => label.galley.job.text.ends_with('%')
@@ -7198,7 +7196,6 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    app.generation_status(ui);
                     app.recipe_generate(ui);
                 },
             );
@@ -7379,7 +7376,7 @@ mod tests {
     }
 
     #[test]
-    fn idle_workspace_hides_the_footer_and_active_recovery_stays_available() {
+    fn workspace_keeps_its_height_and_generation_actions_work_in_their_panels() {
         let _background = mapper_studio::loading_progress::begin("Terrain colors", None);
         for dark in [false, true] {
             let ctx = egui::Context::default();
@@ -7432,10 +7429,8 @@ mod tests {
                     events,
                     ..Default::default()
                 };
-                let mut output = ctx.run_ui(
-                    input(vec![]),
-                    |ui| {
-                        app.generation_status(ui);
+                let mut render = |app: &mut Studio, events| {
+                    let mut frame = ctx.run_ui(input(events), |ui| {
                         egui::Panel::left("test-recipe")
                             .exact_size(320.)
                             .show(ui, |ui| {
@@ -7444,9 +7439,15 @@ mod tests {
                             });
                         egui::CentralPanel::default().show(ui, |ui| {
                             rects.push(ui.available_rect_before_wrap());
+                            app.queue(ui);
                         });
-                    },
-                );
+                    });
+                    textures.update(&frame.textures_delta);
+                    frame.textures_delta.clear();
+                    frame
+                };
+                render(&mut app, vec![]);
+                let output = render(&mut app, vec![]);
                 assert!(!output.shapes.iter().any(
                     |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.job.text == "Ready")
                 ));
@@ -7460,7 +7461,7 @@ mod tests {
                 let recovery = output.shapes.iter().find_map(|s| {
                     let egui::Shape::Text(text) = &s.shape else { return None };
                     let rect = text.galley.rect.translate(text.pos.to_vec2());
-                    if rect.top() <= 680. { return None; }
+                    if rect.left() > 320. || rect.top() <= 630. || !s.clip_rect.contains_rect(rect) { return None; }
                     match text.galley.job.text.as_str() {
                         "Rust installations…" => Some(("blocked", rect.center())),
                         "Retry asset loading" => Some(("assets", rect.center())),
@@ -7475,23 +7476,16 @@ mod tests {
                             if text.galley.job.text == "Preparing installation monument metadata…"
                     )));
                 }
-                textures.update(&output.textures_delta);
-                output.textures_delta.clear();
-                if let Some(directory) = std::env::var_os("MAPPER_RECIPE_UI_SNAPSHOTS") {
-                    let path = std::path::Path::new(&directory).join(format!(
-                        "recipe-{}-{}.png",
-                        if dark { "dark" } else { "light" },
-                        state
-                    ));
-                    let image = textures.raster(&ctx, output, [1050, 720]);
-                    mapper_studio::image_export::write_png(&path, &image, || false).unwrap();
-                }
-                if let Some((action, pos)) = recovery {
-                    let recipe = app.project.clone();
-                    app.settings_open = false;
-                    app.settings_page = settings::Page::Appearance;
+                let queue_action = |frame: &egui::FullOutput, label| frame.shapes.iter().find_map(|shape| {
+                    let egui::Shape::Text(text) = &shape.shape else { return None };
+                    let rect = text.galley.rect.translate(text.pos.to_vec2());
+                    (text.galley.job.text == label && shape.clip_rect.contains_rect(rect))
+                        .then_some(rect.center())
+                });
+                let click = |render: &mut dyn FnMut(&mut Studio, Vec<egui::Event>) -> egui::FullOutput,
+                             app: &mut Studio, pos| {
                     for pressed in [true, false] {
-                        let events = vec![
+                        render(app, vec![
                             egui::Event::PointerMoved(pos),
                             egui::Event::PointerButton {
                                 pos,
@@ -7499,12 +7493,27 @@ mod tests {
                                 pressed,
                                 modifiers: egui::Modifiers::NONE,
                             },
-                        ];
-                        let mut clicked =
-                            ctx.run_ui(input(events), |ui| app.generation_status(ui));
-                        textures.update(&clicked.textures_delta);
-                        clicked.textures_delta.clear();
+                        ]);
                     }
+                };
+                let actions = queue_action(&output, "Actions").unwrap();
+                assert!(actions.x > 320., "Actions should be inside Queue");
+                click(&mut render, &mut app, actions);
+                let menu = render(&mut app, vec![]);
+                let cancel = queue_action(&menu, "Cancel all");
+                assert_eq!(cancel.is_some(), matches!(state, "busy" | "full"));
+                if let Some(pos) = cancel {
+                    click(&mut render, &mut app, pos);
+                    assert!(!app.generation.busy());
+                    assert!(app.generation.queue.iter().all(|job| job.state == State::Cancelled));
+                } else {
+                    click(&mut render, &mut app, actions);
+                }
+                if let Some((action, pos)) = recovery {
+                    let recipe = app.project.clone();
+                    app.settings_open = false;
+                    app.settings_page = settings::Page::Appearance;
+                    click(&mut render, &mut app, pos);
                     if action == "blocked" {
                         assert!(app.settings_open);
                         assert!(app.settings_page == settings::Page::Installations);
@@ -7519,9 +7528,7 @@ mod tests {
                     assert_eq!(app.project, recipe);
                 }
             }
-            assert_eq!(rects[0], rects[1], "An unset seed should also leave the idle workspace clear");
-            assert!(rects[0].bottom() > rects[2].bottom() + 30., "Idle content should reclaim the footer");
-            assert!(rects[2..].iter().all(|rect| *rect == rects[2]));
+            assert!(rects.iter().all(|rect| *rect == rects[0]), "Workspace height changed");
         }
     }
 }

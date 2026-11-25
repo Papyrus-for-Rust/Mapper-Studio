@@ -2564,7 +2564,6 @@ impl eframe::App for Studio {
         let selected_before_dock = self.selected;
         let snapshot = self.visible_generated_tab();
         let mut dock = std::mem::replace(&mut self.dock, DockState::new(vec![]));
-        self.generation_status(ui);
         if self.content.monument_settings_open() {
             self.with_recipe_draft(|studio| {
                 let identities = studio.source.bound_root_ref(&studio.project)

@@ -6,11 +6,6 @@ use std::sync::{Arc, atomic::AtomicBool};
 pub(super) enum Status<'a> {
     Blocked(&'a str),
     Preparing(&'a Arc<AtomicBool>),
-    Generating {
-        stage: &'a str,
-        fraction: Option<f32>,
-        batch: Option<(usize, usize)>,
-    },
 }
 
 pub(super) fn show(ui: &mut egui::Ui, status: Status<'_>) {
@@ -40,19 +35,7 @@ fn panel(ui: &mut egui::Ui, setup: &[Snapshot], status: Status<'_>) {
             if let Some((job, workers)) = setup.split_first() {
                 setup_line(ui, job, workers);
             } else {
-                progress_line(ui, "Preparing Rust installation", None);
-            }
-        }
-        Status::Generating {
-            stage,
-            fraction,
-            batch,
-            ..
-        } => {
-            if let Some((current, total)) = batch.filter(|(_, total)| *total > 1) {
-                progress_line(ui, &format!("Map {current} of {total} · {stage}"), fraction);
-            } else {
-                progress_line(ui, stage, fraction);
+                ui.label("Preparing Rust installation");
             }
         }
     }
@@ -70,12 +53,9 @@ fn setup_line(ui: &mut egui::Ui, job: &Snapshot, workers: &[Snapshot]) {
         None
     };
     let bar = fraction.filter(|_| ui.available_width() >= 225.);
-    let spinner = fraction.is_none() && ui.available_width() >= 55.;
     let mut available = ui.available_rect_before_wrap();
     if bar.is_some() {
         available.max.x -= 76. + ui.spacing().item_spacing.x;
-    } else if spinner {
-        available.max.x -= 12. + ui.spacing().item_spacing.x;
     }
     ui.scope_builder(egui::UiBuilder::new().max_rect(available), |ui| {
         ui.push_id(job.id, |ui| {
@@ -108,34 +88,6 @@ fn setup_line(ui: &mut egui::Ui, job: &Snapshot, workers: &[Snapshot]) {
             egui::ProgressBar::new(value)
                 .desired_width(76.)
                 .desired_height(10.),
-        );
-    } else if spinner {
-        ui.add(egui::Spinner::new().size(12.));
-    }
-}
-
-fn progress_line(ui: &mut egui::Ui, caption: &str, fraction: Option<f32>) {
-    let fraction = fraction
-        .filter(|value| value.is_finite())
-        .map(|value| value.clamp(0., 1.));
-    if fraction.is_none() {
-        ui.add(egui::Spinner::new().size(12.));
-    }
-    let bar = fraction.filter(|_| ui.available_width() >= 135.);
-    let mut available = ui.available_rect_before_wrap();
-    if bar.is_some() {
-        available.max.x -= 76. + ui.spacing().item_spacing.x;
-    }
-    ui.scope_builder(egui::UiBuilder::new().max_rect(available), |ui| {
-        ui.add(egui::Label::new(caption).truncate())
-            .on_hover_text(caption);
-    });
-    if let Some(value) = bar {
-        ui.add(
-            egui::ProgressBar::new(value)
-                .desired_width(76.)
-                .desired_height(16.)
-                .show_percentage(),
         );
     }
 }
@@ -224,38 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn active_composition_progress_uses_the_footer_without_a_duplicate_menu() {
-        let token = Arc::new(AtomicBool::new(false));
-        let ctx = egui::Context::default();
-        let progress = loading_progress::begin("Composing map", Some(token.clone()));
-        progress.reporter().stage("Simulating erosion");
-        progress.reporter().update("", 3, Some(4), Unit::Items);
-        let (jobs, primary) = loading_progress::active_with_priority(Some(&token));
-        let job = &jobs[primary.unwrap()];
-        let mut output = ctx.run_ui(Default::default(), |ui| {
-            egui::CentralPanel::default().show(ui, |ui| {
-                ui.horizontal(|ui| show(
-                    ui,
-                    Status::Generating {
-                        stage: &job.stage,
-                        fraction: job.fraction(),
-                        batch: None,
-                    },
-                ));
-            });
-        });
-        output.textures_delta.clear();
-        let labels = output.shapes.iter().filter_map(|shape| match &shape.shape {
-            egui::Shape::Text(text) => Some(text.galley.job.text.as_str()),
-            _ => None,
-        }).collect::<Vec<_>>();
-        assert!(labels.contains(&"Simulating erosion"));
-        assert!(labels.contains(&"75%"));
-        assert!(!labels.contains(&"Setup details"));
-    }
-
-    #[test]
-    fn background_work_keeps_the_generation_stage_and_blocker_visible() {
+    fn background_work_keeps_setup_and_blockers_visible() {
         let token = Arc::new(AtomicBool::new(false));
         let optional = Snapshot {
             id: 1,
@@ -298,15 +219,6 @@ mod tests {
                     "Preparing Rust installation",
                 ),
                 (Status::Preparing(&token), Some(&setup), "Checking Rust files"),
-                (
-                    Status::Generating {
-                        stage: "Composing map",
-                        fraction: Some(0.5),
-                        batch: Some((2, 4)),
-                    },
-                    None,
-                    "Map 2 of 4 · Composing map",
-                ),
             ] {
                 let mut output = ctx.run_ui(
                     egui::RawInput {
