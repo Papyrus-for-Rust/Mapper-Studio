@@ -354,7 +354,7 @@ impl CompositionPanel {
                 && v.key.catalog==key.catalog && v.key.bindings==key.bindings
         })
     }
-    fn poll(&mut self,ctx:&egui::Context) {
+    pub(super) fn poll(&mut self,ctx:&egui::Context) {
         if let Some(task) = &self.task {
             let result = match task.receiver.try_recv() {
                 Ok(r) => Some(r),

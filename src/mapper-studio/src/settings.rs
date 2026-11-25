@@ -273,9 +273,7 @@ impl Studio {
     }
 
     fn installation_settings(&mut self, ui: &mut egui::Ui) {
-        let busy = self.generation.busy()
-            || self.task.is_some()
-            || self.placement_task.is_some()
+        let busy = self.generation_in_progress()
             || self.source.inspecting()
             || !mapper_studio::loading_progress::active().is_empty()
             || self.installation_library.resetting();

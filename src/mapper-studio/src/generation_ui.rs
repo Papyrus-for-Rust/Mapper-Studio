@@ -12,6 +12,8 @@ use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 pub(super) mod persistence;
 mod monument_edits;
+mod queue_execution;
+mod queue_table;
 pub(super) use monument_edits::MonumentTemplate;
 use monument_edits::MonumentChanges;
 
@@ -41,7 +43,7 @@ struct Run {
 }
 impl Run {
     fn remove_earlier_item(&mut self, index: usize) {
-        debug_assert!(index < self.finished);
+        if index >= self.finished { return; }
         self.finished -= 1;
         self.start -= usize::from(index < self.start);
     }
@@ -309,16 +311,14 @@ enum QueueAction {
     LoadRecipe(u64),
     SaveRecipe(u64),
     CancelMap(u64),
+    StartMap(u64),
+    StartAll,
+    TogglePause(u64),
+    ToggleQueuePause,
     Requeue(u64),
     RunNext(u64),
     MoveWaiting { id: u64, target: u64 },
     StepWaiting { id: u64, direction: isize },
-}
-
-#[derive(Clone, Copy)]
-struct QueueDrag {
-    id: u64,
-    grab_x: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -340,10 +340,6 @@ impl QueueFilter {
             Self::Issues => "Issues",
             Self::Ready => "Ready",
         }
-    }
-
-    fn caption(self) -> &'static str {
-        if self == Self::All { "Filter" } else { self.label() }
     }
 
     fn includes(self, state: State) -> bool {
@@ -375,6 +371,8 @@ pub(super) struct Generation {
     cancelled_preview: Option<PreviewLoad>,
     queue: Vec<QueueItem>,
     queue_filter: QueueFilter,
+    queue_paused: bool,
+    execution: queue_execution::QueueExecution,
     revealed_job: Option<u64>,
     queue_focus: Option<u64>,
     next_id: u64,
@@ -434,6 +432,8 @@ impl Default for Generation {
             cancelled_preview: None,
             queue: Vec::new(),
             queue_filter: QueueFilter::All,
+            queue_paused: false,
+            execution: Default::default(),
             revealed_job: None,
             queue_focus: None,
             next_id: 1,
@@ -628,11 +628,18 @@ impl Generation {
         self.run.is_some()
     }
     fn available_slots(&self) -> usize {
-        let pending = self.run.as_ref().map_or(0, |run| self.queue.len() - run.finished);
-        MAX_BATCH - pending
+        let first_running = self.queue.iter().position(|item| matches!(item.state, State::Running | State::Waiting));
+        let protected = match (first_running, self.run.as_ref()) {
+            (Some(first), Some(run)) => first.min(run.finished),
+            (Some(first), None) => first,
+            (None, Some(run)) => run.finished,
+            (None, None) => self.queue.len(),
+        };
+        MAX_BATCH.saturating_sub(self.queue.len() - protected)
     }
     fn history_len(&self) -> usize {
-        self.run.as_ref().map_or(self.queue.len(), |run| run.start)
+        let end = self.run.as_ref().map_or(self.queue.len(), |run| run.start);
+        self.queue[..end].iter().position(|item| matches!(item.state, State::Running | State::Waiting)).unwrap_or(end)
     }
     fn discard_queue_prefix(&mut self, count: usize) {
         if count == 0 {
@@ -656,7 +663,7 @@ impl Generation {
         count <= self.available_slots()
     }
     fn waiting_count(&self) -> usize {
-        self.run.as_ref().map_or(0, |run| self.queue.len() - run.finished - 1)
+        self.queue.iter().filter(|item| item.state == State::Waiting).count()
     }
     fn retire_waiting_map(&mut self, id: u64) {
         if self.queue_focus == Some(id) {
@@ -669,16 +676,15 @@ impl Generation {
         }
     }
     fn remove_waiting_maps(&mut self) {
-        let count = self.waiting_count();
-        if count == 0 {
-            return;
+        let mut removed = false;
+        for index in (0..self.queue.len()).rev() {
+            if self.queue[index].state == State::Waiting {
+                let item = self.queue.remove(index);
+                self.retire_waiting_map(item.id);
+                removed = true;
+            }
         }
-        let first_waiting = self.queue.len() - count;
-        for item in self.queue.split_off(first_waiting) {
-            debug_assert_eq!(item.state, State::Waiting);
-            self.retire_waiting_map(item.id);
-        }
-        self.revision += 1;
+        if removed { self.revision += 1; }
     }
     pub(super) fn result_monuments(&self, id:u64) -> Option<&[map_monuments::Monument]> {
         self.results.iter().find(|r|r.id==id).map(|r|r.monuments.as_slice())
@@ -739,7 +745,7 @@ impl Studio {
         if let Some(start) = self.generation.started.take()
             && let Some(run) = &self.generation.run
         {
-            self.generation.elapsed.insert(run.active_id, start.elapsed());
+            self.generation.elapsed.insert(run.active_id, self.generation.execution.frozen_primary.take().unwrap_or_else(Instant::now).saturating_duration_since(start));
         }
     }
 
@@ -759,13 +765,14 @@ impl Studio {
         let state = self.generation.queue[index].state;
         let active = state == State::Running && self.generation.run.as_ref()
             .is_some_and(|run| run.active_id == id);
-        let elapsed = if active {
-            self.generation.started.map(|start| start.elapsed())
-        } else {
-            self.generation.elapsed.get(&id).copied()
-        };
-        let (stage, fraction) = if active {
+        let extra_active = self.generation.execution.extra_id() == Some(id);
+        let elapsed = self.queue_elapsed(id);
+        let (stage, fraction) = if state == State::Running && self.queue_job_paused(id) {
+            (self.queue_pause_caption(id).into(), None)
+        } else if active {
             self.generation_stage()
+        } else if state == State::Running {
+            self.extra_queue_stage(id)
         } else {
             let stage = match state {
                 State::Waiting => "Queued",
@@ -779,7 +786,7 @@ impl Studio {
         let row = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
         ui.allocate_ui_with_layout(row, egui::Layout::right_to_left(egui::Align::Center), |ui| {
             map_seed_menu(ui, &self.generation.queue[index].recipe, false);
-            if active && ui.checkbox(&mut self.live_generation, "Live")
+            if (active || extra_active) && ui.checkbox(&mut self.live_generation, "Live")
                 .on_hover_text("Show map previews as generation stages finish.")
                 .changed() && !self.live_generation
             {
@@ -798,7 +805,9 @@ impl Studio {
             && let Some(run) = &self.generation.run
             && index > run.finished
         {
-            self.waiting_map(ui, id, run.active_id, index - run.finished);
+            let position = self.generation.queue[run.finished + 1..=index].iter()
+                .filter(|item| item.state == State::Waiting).count();
+            self.waiting_map(ui, id, run.active_id, position);
             return;
         }
         if state == State::Failed {
@@ -857,7 +866,7 @@ impl Studio {
                 .or_else(|| {
                     (self.preview_current() && self.task.is_none()).then_some(self.texture.as_ref()).flatten()
                 })
-        }).flatten();
+        }).flatten().or_else(|| self.live_generation.then(|| self.extra_live_texture(id)).flatten());
         if let Some(texture) = texture {
             let size = rect.size().min_elem();
             painter.image(texture.id(), Rect::from_center_size(rect.center(), Vec2::splat(size)),
@@ -1268,12 +1277,18 @@ impl Studio {
         });
         self.topology_tool.enabled = false;
         self.topology_tool.cancel_stroke();
-        self.start_generation_candidate(ctx, preserve_recipe);
+        if self.generation.queue_paused {
+            self.generation.execution.start_pending = Some(preserve_recipe);
+        } else {
+            self.start_generation_candidate(ctx, preserve_recipe);
+        }
         Ok(first_id)
     }
 
     fn start_generation_candidate(&mut self, ctx: &egui::Context, reuse_terrain: bool) {
         self.erosion_comparison.cancel();
+        self.generation.execution.primary_paused = false;
+        self.generation.execution.frozen_primary = None;
         self.generation.started = Some(Instant::now());
         self.clear_stage_preview();
         if reuse_terrain
@@ -1316,7 +1331,16 @@ impl Studio {
     }
 
     pub(super) fn cancel_generation(&mut self) {
+        self.generation.queue_paused = false;
+        self.generation.execution.drain_parallel = false;
+        self.generation.execution.advance_pending = false;
+        self.generation.execution.start_pending = None;
+        self.generation.execution.placement_pending = false;
+        self.generation.execution.primary_paused = false;
         self.record_generation_elapsed();
+        if let Some(id) = self.generation.execution.extra_id() {
+            self.cancel_extra_queue_job(id);
+        }
         if self.generation.run.is_some() {self.generation.revision+=1;}
         for item in &mut self.generation.queue {
             if matches!(item.state, State::Running | State::Waiting) {
@@ -1330,6 +1354,10 @@ impl Studio {
         self.finish_generation_run();
     }
     fn cancel_queued_map(&mut self, id: u64, ctx: &egui::Context) {
+        if self.cancel_extra_queue_job(id) {
+            ctx.request_repaint();
+            return;
+        }
         let Some(run) = &mut self.generation.run else { return; };
         let Some(index) = self.generation.queue.iter().position(|item| item.id == id) else { return; };
         let item = &mut self.generation.queue[index];
@@ -1354,7 +1382,7 @@ impl Studio {
     }
 
     fn run_queued_map_next(&mut self, id: u64, ctx: &egui::Context) {
-        let Some(next) = self.generation.run.as_ref().and_then(|run| self.generation.queue.get(run.finished + 1)) else {
+        let Some(next) = self.generation.queue.iter().find(|item| item.state == State::Waiting) else {
             return;
         };
         self.move_waiting_map(id, next.id, ctx);
@@ -1383,13 +1411,10 @@ impl Studio {
     }
 
     fn step_waiting_map(&mut self, id: u64, direction: isize, ctx: &egui::Context) {
-        let Some(target) = self.generation.queue.iter().position(|item| item.id == id)
-            .and_then(|index| index.checked_add_signed(direction))
-            .and_then(|index| self.generation.queue.get(index))
-        else {
-            return;
-        };
-        self.move_waiting_map(id, target.id, ctx);
+        let waiting: Vec<_> = self.generation.queue.iter().filter(|item| item.state == State::Waiting).map(|item| item.id).collect();
+        let Some(index) = waiting.iter().position(|&job| job == id)
+            .and_then(|index| index.checked_add_signed(direction)) else { return };
+        if let Some(&target) = waiting.get(index) { self.move_waiting_map(id, target, ctx); }
     }
 
     fn cancel_generation_work(&mut self) {
@@ -1434,12 +1459,21 @@ impl Studio {
         self.advance_generation(ctx);
     }
     fn advance_generation(&mut self, ctx: &egui::Context) {
+        self.generation.execution.start_pending = None;
+        self.generation.execution.primary_paused = false;
+        self.generation.execution.placement_pending = false;
         self.record_generation_elapsed();
         self.generation.overview=None;
         self.generation.overview_ready=None;
         let Some(run) = &mut self.generation.run else { return; };
-        let next = run.finished + 1;
-        if let Some(item) = self.generation.queue.get_mut(next) {
+        let next = self.generation.queue.iter().enumerate().skip(run.finished + 1)
+            .find_map(|(index, item)| (item.state == State::Waiting).then_some(index));
+        if let Some(next) = next {
+            if self.generation.queue_paused {
+                self.generation.execution.advance_pending = true;
+                return;
+            }
+            let item = &mut self.generation.queue[next];
             let reuse_terrain = run.terrain_ready
                 || self.generation.edits.values().any(|edit| edit.job == Some(item.id));
             item.state = State::Running;
@@ -1475,6 +1509,7 @@ impl Studio {
             || self.task.is_some()
             || self.placement_task.is_some()
             || self.composition.running()
+            || self.generation.execution.extra.is_some()
     }
 
     pub(super) fn deferred_generation_placement(&self) -> bool {
@@ -1745,7 +1780,8 @@ impl Studio {
         }
     }
     pub(super) fn tick_generation(&mut self, ctx: &egui::Context) {
-        if !self.generation.busy() {
+        self.tick_queue_execution(ctx);
+        if !self.generation.busy() || self.queue_primary_paused() {
             return;
         }
         if self.generation.active_recipe() != Some(&self.project) {
@@ -2205,14 +2241,18 @@ impl Studio {
             .or_else(|| self.generation.queue.iter().find(|job| job.id == id).map(|job| job.label.as_str()))
             .unwrap_or("Map unavailable").to_owned()
     }
-    fn queue_actions(&mut self, ui: &mut egui::Ui, locate_in_menu: bool) {
+    fn queue_actions(&mut self, ui: &mut egui::Ui) -> egui::Response {
+        let running = self.generation.busy() || self.generation.execution.extra.is_some();
         let config = MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
-        MenuButton::new("Actions").config(config).ui(ui, |ui| {
+        let content = egui::Atoms::new((
+            "Actions", egui::Atom::custom(egui::Id::new("queue-actions-chevron"), Vec2::splat(10.)),
+        ));
+        MenuButton::from_button(egui::Button::new(content).corner_radius(6.))
+            .config(config).ui(ui, |ui| {
             ui.set_max_width(560.);
             if self.generation_in_progress() {
-                let running = self.generation.busy();
                 let (label, help) = if running {
-                    ("Cancel all", "Stop the running map and cancel all waiting maps.")
+                    ("Cancel all", "Stop all running maps and cancel all waiting maps.")
                 } else {
                     ("Cancel preview", "Stop the current recipe preview.")
                 };
@@ -2223,7 +2263,7 @@ impl Studio {
                     return;
                 }
             }
-            if locate_in_menu && self.generation.busy() && ui.button("Locate running map").clicked() {
+            if running && ui.button("Locate running map").clicked() {
                 self.locate_running_map(ui.ctx());
                 ui.close();
             }
@@ -2292,7 +2332,7 @@ impl Studio {
                     ui.close();
                 }
             }
-        });
+        }).0
     }
     fn can_load_queue_recipe(&self) -> bool {
         (self.generation.busy() || !self.generation_in_progress())
@@ -2382,240 +2422,13 @@ impl Studio {
         self.status = "Recipe loaded.".into();
     }
 
-    pub(super) fn queue(&mut self, ui: &mut egui::Ui) {
-        let (stage_label, fraction) = self.generation_stage();
-        let stage = (stage_label.as_ref(), fraction);
-        let can_load_recipe = self.can_load_queue_recipe();
-        let can_requeue = self.can_requeue();
-        let active = self.generation.run.as_ref().map(|run| run.active_id);
-        let next = self.generation.run.as_ref().map(|run| run.finished + 1);
-        let filter = self.generation.queue_filter;
-        let visible_jobs: Vec<_> = self.generation.queue.iter().enumerate()
-            .filter_map(|(index, item)| filter.includes(item.state).then_some(index))
-            .collect();
-        let reveal_job = self.generation.queue_focus.or_else(|| {
-            active.filter(|id| Some(*id) != self.generation.revealed_job)
-        });
-        let reveal = reveal_job.and_then(|id| {
-            visible_jobs.iter().position(|&index| self.generation.queue[index].id == id)
-        });
-        let shallow = ui.available_height()
-            < 3. * ui.spacing().interact_size.y + 2. * ui.spacing().item_spacing.y;
-        let mut action = None;
-        egui::ScrollArea::vertical()
-            .id_salt("generation-queue-body")
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                let font = egui::TextStyle::Button.resolve(ui.style());
-                let control_width = ui.fonts_mut(|fonts| {
-                    ["Actions", "Locate"].into_iter()
-                        .chain(QueueFilter::ALL.map(QueueFilter::caption))
-                        .map(|label| fonts.layout_no_wrap(
-                            label.into(), font.clone(), Color32::PLACEHOLDER,
-                        ).size().x)
-                        .fold(0., f32::max)
-                }) + 2. * ui.spacing().button_padding.x + ui.spacing().item_spacing.x;
-                let compact = ui.available_width() < QUEUE_CARD_WIDTH + control_width;
-                if compact {
-                    ui.horizontal_wrapped(|ui| self.queue_controls(ui, filter, false));
-                }
-                ui.horizontal_top(|ui| {
-                    let width = if compact { ui.available_width() } else {
-                        ui.available_width() - control_width
-                    }.max(1.);
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(width, 0.),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            ui.set_width(width);
-                            if self.generation.queue.is_empty() {
-                                ui.weak("Queue is empty");
-                            } else if visible_jobs.is_empty() {
-                                ui.weak("No matching jobs");
-                            } else {
-                                ui.style_mut().always_scroll_the_only_direction = true;
-                                egui::ScrollArea::horizontal()
-                                    .id_salt(("generation-queue-cards", filter))
-                                    .animated(ui.style().animation_time > 0.)
-                                    .auto_shrink([false, true])
-                                    .show_viewport(ui, |ui, viewport| {
-                                        let items = &self.generation.queue;
-                                        let spacing = ui.spacing().item_spacing.x;
-                                        let stride = QUEUE_CARD_WIDTH + spacing;
-                                        let origin = ui.max_rect().left();
-                                        let x = |slot: f32| origin + slot * stride;
-                                        // Reserve the full scroll extent without laying out every card.
-                                        ui.set_min_width(stride * visible_jobs.len() as f32 - spacing);
-                                        if let Some(index) = reveal && !ui.is_sizing_pass() {
-                                            let left = index as f32 * stride;
-                                            let visible = viewport.x_range();
-                                            let card_is_visible = if viewport.width() >= QUEUE_CARD_WIDTH {
-                                                visible.contains(left) && visible.contains(left + QUEUE_CARD_WIDTH)
-                                            } else {
-                                                visible.contains(left + QUEUE_CARD_WIDTH * 0.5)
-                                            };
-                                            if !card_is_visible {
-                                                let target = Rect::from_min_size(
-                                                    Pos2::new(x(index as f32), ui.max_rect().top()),
-                                                    Vec2::new(QUEUE_CARD_WIDTH, 0.),
-                                                );
-                                                ui.scroll_to_rect(target, Some(egui::Align::Center));
-                                            }
-                                            // Request the reveal once. Egui can then finish the
-                                            // scroll or yield to manual scrolling.
-                                            if Some(items[visible_jobs[index]].id) == active {
-                                                self.generation.revealed_job = active;
-                                            }
-                                            self.generation.queue_focus = None;
-                                        }
-                                        // Keep the adjacent cards available across scroll boundaries.
-                                        let first = ((viewport.left() / stride).floor() as usize)
-                                            .min(visible_jobs.len() - 1).saturating_sub(1);
-                                        let end = ((viewport.right() / stride).ceil() as usize + 1)
-                                            .max(first + 1).min(visible_jobs.len());
-                                        let clip = ui.clip_rect();
-                                        let drag = egui::DragAndDrop::payload::<QueueDrag>(ui.ctx())
-                                            .zip(ui.ctx().pointer_latest_pos())
-                                            .and_then(|(drag, pointer)| {
-                                                let start = next?;
-                                                let from = visible_jobs.iter().position(|&index| {
-                                                    index >= start && items[index].id == drag.id
-                                                        && items[index].state == State::Waiting
-                                                })?;
-                                                let first_waiting = visible_jobs.partition_point(|&index| index < start);
-                                                let to = ((pointer.x - drag.grab_x - origin) / stride).round() as usize;
-                                                let to = to.clamp(first_waiting, visible_jobs.len() - 1);
-                                                (clip.contains(pointer) && items[visible_jobs[to]].state == State::Waiting)
-                                                    .then_some((from, to, pointer.x - drag.grab_x))
-                                            });
-                                        if let Some((from, to, _)) = drag {
-                                            if ui.input(|input| input.pointer.primary_released()) {
-                                                action = Some(QueueAction::MoveWaiting {
-                                                    id: items[visible_jobs[from]].id,
-                                                    target: items[visible_jobs[to]].id,
-                                                });
-                                                egui::DragAndDrop::clear_payload(ui.ctx());
-                                            } else {
-                                                let pointer_x = ui.ctx().pointer_latest_pos().unwrap().x;
-                                                let edge = 28_f32.min(clip.width() * 0.3);
-                                                if edge > 0. {
-                                                    let left = ((clip.left() + edge - pointer_x) / edge).clamp(0., 1.);
-                                                    let right = ((pointer_x - clip.right() + edge) / edge).clamp(0., 1.);
-                                                    let delta = (left - right) * 420. * ui.input(|input| input.stable_dt);
-                                                    let can_scroll = (delta > 0. && viewport.left() > 0.)
-                                                        || (delta < 0. && viewport.right() < x(visible_jobs.len() as f32) - origin - spacing);
-                                                    if can_scroll {
-                                                        ui.scroll_with_delta_animation(egui::vec2(delta, 0.), egui::style::ScrollAnimation::none());
-                                                        ui.ctx().request_repaint();
-                                                    }
-                                                }
-                                                if !ui.is_sizing_pass() {
-                                                    ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                                                }
-                                            }
-                                        }
-                                        let mut height: f32 = 0.;
-                                        let mut draw = |slot: usize, active_drag: bool| {
-                                            let index = visible_jobs[slot];
-                                            let item = &items[index];
-                                            let projected = match drag {
-                                                Some((from, to, _)) if from < slot && slot <= to => slot - 1,
-                                                Some((from, to, _)) if to <= slot && slot < from => slot + 1,
-                                                _ => slot,
-                                            };
-                                            let motion_id = ui.id().with(("queue-slot", item.id));
-                                            let left = if active_drag {
-                                                let left = drag.unwrap().2.clamp(
-                                                    clip.left(), (clip.right() - QUEUE_CARD_WIDTH).max(clip.left()),
-                                                );
-                                                ui.ctx().animate_value_with_time(motion_id, (left - origin) / stride, 0.);
-                                                left
-                                            } else {
-                                                x(ui.ctx().animate_value_with_time(
-                                                    motion_id, projected as f32, ui.style().animation_time.min(0.16),
-                                                ))
-                                            };
-                                            let rect = Rect::from_x_y_ranges(
-                                                left..=left + QUEUE_CARD_WIDTH, ui.max_rect().y_range(),
-                                            );
-                                            let card_id = ui.id().with(("queue-card", item.id));
-                                            let mut card = ui.new_child(egui::UiBuilder::new()
-                                                .id(card_id).max_rect(rect)
-                                                .layout(egui::Layout::top_down(egui::Align::Min)));
-                                            let shown = queue_card(
-                                                &mut card, item, stage, can_load_recipe, can_requeue,
-                                                next.and_then(|first| index.checked_sub(first)),
-                                                !shallow || filter == QueueFilter::Issues,
-                                                if item.state == State::Running {
-                                                    self.generation.started.map(|start| start.elapsed())
-                                                } else {
-                                                    self.generation.elapsed.get(&item.id).copied()
-                                                },
-                                            );
-                                            height = height.max(shown.response.rect.height());
-                                            if active_drag {
-                                                card.painter().rect_stroke(shown.response.rect, 6.,
-                                                    Stroke::new(1.5, card.visuals().hyperlink_color),
-                                                    egui::StrokeKind::Inside);
-                                            }
-                                            if let Some(selected) = shown.inner {
-                                                action = Some(selected);
-                                            }
-                                        };
-                                        for slot in first..end {
-                                            if drag.is_none_or(|(from, _, _)| slot != from) {
-                                                draw(slot, false);
-                                            }
-                                        }
-                                        if let Some((from, to, _)) = drag {
-                                            draw(from, true);
-                                            if from != to && !ui.input(|input| input.pointer.primary_released()) {
-                                                let edge = if from < to { QUEUE_CARD_WIDTH + spacing * 0.5 } else { -spacing * 0.5 };
-                                                let top = ui.max_rect().top();
-                                                ui.painter().vline(x(to as f32) + edge, top..=top + height,
-                                                    Stroke::new(2., ui.visuals().hyperlink_color));
-                                            }
-                                        }
-                                        ui.allocate_space(egui::vec2(QUEUE_CARD_WIDTH, height));
-                                    });
-                            }
-                        },
-                    );
-                    if !compact {
-                        ui.vertical(|ui| self.queue_controls(ui, filter, shallow));
-                    }
-                });
-            });
-        self.apply_queue_action(action, ui.ctx());
-    }
-
     fn locate_running_map(&mut self, ctx: &egui::Context) {
         if !self.generation.queue_filter.includes(State::Running) {
             self.generation.queue_filter = QueueFilter::All;
         }
         self.generation.revealed_job = None;
-        self.generation.queue_focus = None;
+        self.generation.queue_focus = self.generation.queue.iter().find(|job| job.state == State::Running).map(|job| job.id);
         ctx.request_repaint();
-    }
-
-    fn queue_controls(&mut self, ui: &mut egui::Ui, filter: QueueFilter, locate_in_menu: bool) {
-        self.queue_actions(ui, locate_in_menu);
-        if !locate_in_menu && self.generation.busy()
-            && ui.button("Locate").on_hover_text("Scroll to the running map.").clicked()
-        {
-            self.locate_running_map(ui.ctx());
-        }
-        if !self.generation.queue.is_empty() {
-            ui.menu_button(filter.caption(), |ui| {
-                for choice in QueueFilter::ALL {
-                    if ui.selectable_value(&mut self.generation.queue_filter, choice, choice.label()).clicked() {
-                        self.generation.queue_focus = None;
-                        ui.close();
-                        ui.ctx().request_repaint();
-                    }
-                }
-            }).response.on_hover_text("Filter jobs by status.");
-        }
     }
 
     fn apply_queue_action(&mut self, action: Option<QueueAction>, ctx: &egui::Context) {
@@ -2623,6 +2436,16 @@ impl Studio {
             Some(QueueAction::OpenMap(id)) => self.show_tab(Tab::Generated(id)),
             Some(QueueAction::LoadRecipe(id)) => self.load_queue_recipe(id),
             Some(QueueAction::CancelMap(id)) => self.cancel_queued_map(id, ctx),
+            Some(QueueAction::StartMap(id)) => self.start_queue_job(id, ctx),
+            Some(QueueAction::StartAll) => {
+                self.generation.execution.drain_parallel = true;
+                ctx.request_repaint();
+            }
+            Some(QueueAction::TogglePause(id)) => self.toggle_queue_job_pause(id, ctx),
+            Some(QueueAction::ToggleQueuePause) => {
+                self.generation.queue_paused ^= true;
+                ctx.request_repaint();
+            }
             Some(QueueAction::Requeue(id)) => self.requeue_job(id, ctx),
             Some(QueueAction::RunNext(id)) => self.run_queued_map_next(id, ctx),
             Some(QueueAction::MoveWaiting { id, target }) => self.move_waiting_map(id, target, ctx),
@@ -3513,288 +3336,6 @@ fn queue_retry_button(ui: &mut egui::Ui, label: &str, enabled: bool) -> egui::Re
 fn run_next_button(ui: &mut egui::Ui) -> egui::Response {
     ui.small_button("Run next")
         .on_hover_text("Move this map to the front of the waiting queue.")
-}
-
-const QUEUE_CARD_INNER_WIDTH: f32 = 180.;
-const QUEUE_CARD_HORIZONTAL_MARGIN: i8 = 7;
-const QUEUE_CARD_WIDTH: f32 = QUEUE_CARD_INNER_WIDTH + 2. * QUEUE_CARD_HORIZONTAL_MARGIN as f32;
-
-fn queue_grip(ui: &mut egui::Ui, item: &QueueItem) -> Option<QueueAction> {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(16., 18.), Sense::click_and_drag());
-    response.widget_info(|| egui::WidgetInfo::labeled(
-        egui::WidgetType::Button, ui.is_enabled(), format!("Reorder {}", item.label),
-    ));
-    let response = response.on_hover_cursor(egui::CursorIcon::Grab)
-        .on_hover_text("Drag to reorder this waiting map. With the handle focused, use Left or Right.");
-    if response.clicked() {
-        response.request_focus();
-    }
-    let press_x = ui.input(|input| input.pointer.press_origin()).map_or(rect.center().x, |press| press.x);
-    response.dnd_set_drag_payload(QueueDrag {
-        id: item.id,
-        grab_x: press_x - rect.left() + f32::from(QUEUE_CARD_HORIZONTAL_MARGIN),
-    });
-    if response.hovered() || response.has_focus() {
-        ui.painter().rect_filled(rect, 3., ui.visuals().selection.bg_fill);
-    }
-    let color = if response.hovered() || response.has_focus() {
-        ui.visuals().text_color()
-    } else {
-        ui.visuals().weak_text_color()
-    };
-    for x in [-2.5, 2.5] {
-        for y in [-4., 0., 4.] {
-            ui.painter().circle_filled(rect.center() + egui::vec2(x, y), 1.1, color);
-        }
-    }
-    if !response.has_focus() {
-        return None;
-    }
-    ui.memory_mut(|memory| memory.set_focus_lock_filter(response.id, egui::EventFilter {
-        horizontal_arrows: true,
-        ..Default::default()
-    }));
-    ui.input_mut(|input| {
-        for (key, direction) in [(egui::Key::ArrowLeft, -1), (egui::Key::ArrowRight, 1)] {
-            if input.consume_key(egui::Modifiers::NONE, key) {
-                return Some(QueueAction::StepWaiting { id: item.id, direction });
-            }
-        }
-        None
-    })
-}
-
-fn queue_card(
-    ui: &mut egui::Ui,
-    item: &QueueItem,
-    stage: (&str, Option<f32>),
-    can_load_recipe: bool,
-    can_requeue: bool,
-    waiting_position: Option<usize>,
-    show_issue_summary: bool,
-    elapsed: Option<Duration>,
-) -> egui::InnerResponse<Option<QueueAction>> {
-    ui.push_id(item.id, |ui| {
-        let background = ui.visuals().faint_bg_color;
-        let background = if item.state == State::Running {
-            background.lerp_to_gamma(ui.visuals().selection.bg_fill, 0.45)
-        } else {
-            background
-        };
-        egui::Frame::NONE
-            .fill(background)
-            .corner_radius(6.)
-            .inner_margin(egui::Margin::symmetric(QUEUE_CARD_HORIZONTAL_MARGIN, 5))
-            .show(ui, |ui| {
-                ui.vertical(|ui| {
-                    ui.set_width(QUEUE_CARD_INNER_WIDTH);
-                    let mut action = None;
-                    ui.horizontal(|ui| {
-                        let status = match item.state {
-                            State::Waiting if waiting_position == Some(0) => Some(egui::RichText::new("Next").strong()),
-                            State::Waiting => Some(egui::RichText::new("Queued").weak()),
-                            State::Ready => Some(egui::RichText::new("Ready").weak()),
-                            State::Cancelled => Some(egui::RichText::new("Cancelled").weak()),
-                            State::Incomplete => Some(egui::RichText::new("Incomplete")
-                                .color(ui.visuals().warn_fg_color)),
-                            State::Failed => Some(egui::RichText::new("Failed")
-                                .color(ui.visuals().error_fg_color)),
-                            State::Running => None,
-                        };
-                        let draggable = item.state == State::Waiting && waiting_position.is_some();
-                        if draggable && let Some(reorder) = queue_grip(ui, item) {
-                            action = Some(reorder);
-                        }
-                        let trailing_width = if draggable { 45. } else { 66. };
-                        // Leave room for independent widget rounding at fractional display scales.
-                        let title_width = ui.available_width() - trailing_width - ui.spacing().item_spacing.x - 1.;
-                        let opens_map = matches!(item.state, State::Waiting | State::Running | State::Failed)
-                            || item.state.retains_result();
-                        let mut title = ui.scope(|ui| {
-                            ui.spacing_mut().button_padding.x = 3.;
-                            let font = egui::TextStyle::Button.resolve(ui.style());
-                            let text_width = ui.fonts_mut(|fonts| {
-                                fonts.layout_no_wrap(item.label.clone(), font, Color32::PLACEHOLDER)
-                                    .size().x
-                            });
-                            let mut atoms = egui::Atoms::new((
-                                egui::RichText::new(&item.label).strong().atom_shrink(true),
-                                egui::Atom::grow(),
-                            ));
-                            if text_width > title_width - 6.
-                                && let Some(numbers) = item.label.strip_prefix("Seed ")
-                            {
-                                // Keep the full seed when the heading needs to shrink.
-                                // The original title remains available on hover.
-                                let (seed, suffix) = numbers.split_once(" · ").unwrap_or((numbers, ""));
-                                if seed.parse::<u32>().is_ok() {
-                                    atoms = if suffix.is_empty() {
-                                        egui::Atoms::new((egui::RichText::new(seed).strong(), egui::Atom::grow()))
-                                    } else {
-                                        egui::Atoms::new((
-                                            egui::RichText::new(seed).strong(),
-                                            egui::RichText::new(format!(" · {suffix}")).small().atom_shrink(true),
-                                            egui::Atom::grow(),
-                                        ))
-                                    };
-                                }
-                            }
-                            ui.add_sized(
-                                [title_width, 18.],
-                                egui::Button::new(atoms)
-                                    .sense(if opens_map { Sense::click() } else { Sense::hover() })
-                                    .frame_when_inactive(false)
-                                    .gap(0.)
-                                    .truncate()
-                                    .small(),
-                            )
-                        }).inner;
-                        if opens_map {
-                            title = title.on_hover_cursor(egui::CursorIcon::PointingHand);
-                        }
-                        title.widget_info(|| egui::WidgetInfo::labeled(
-                            if opens_map { egui::WidgetType::Button } else { egui::WidgetType::Label },
-                            ui.is_enabled(), &item.label,
-                        ));
-                        let title = title.on_hover_ui_at_pointer(|ui| {
-                            ui.label(&item.label);
-                            ui.weak(if opens_map {
-                                format!("Open map · {} m", item.recipe.size)
-                            } else {
-                                format!("{} m", item.recipe.size)
-                            });
-                        });
-                        if opens_map && title.clicked() {
-                            action = Some(QueueAction::OpenMap(item.id));
-                        }
-                        if let Some(status) = status {
-                            let response = ui.add_sized(
-                                [trailing_width, 18.],
-                                egui::Label::new(status).halign(egui::Align::Max),
-                            );
-                            if !item.detail.is_empty() {
-                                response.on_hover_ui(|ui| {
-                                    ui.label(diagnostic_ui::summary(&item.detail).as_ref());
-                                });
-                            }
-                        } else if ui.add_sized([trailing_width, 18.], egui::Button::new("Cancel").small())
-                            .on_hover_text("Stop this map and continue the queue.")
-                            .clicked()
-                        {
-                            action = Some(QueueAction::CancelMap(item.id));
-                        }
-                    });
-                    if show_issue_summary && matches!(item.state, State::Failed | State::Incomplete)
-                        && !item.detail.trim().is_empty()
-                    {
-                        let summary = diagnostic_ui::queue_summary(&item.detail);
-                        ui.add(egui::Label::new(egui::RichText::new(summary.as_ref()).small()).truncate())
-                            .on_hover_ui(|ui| {
-                                ui.label(diagnostic_ui::summary(&item.detail).as_ref());
-                            });
-                    }
-                    ui.horizontal(|ui| {
-                        ui.set_min_height(ui.spacing().interact_size.y);
-                        if item.state == State::Incomplete {
-                            ui.spacing_mut().button_padding.x = 5.;
-                        }
-                        if item.state == State::Running {
-                            let mut width = ui.available_width();
-                            if stage.1.is_some() {
-                                width -= 44. + ui.spacing().item_spacing.x;
-                            }
-                            if elapsed.is_some() {
-                                width -= 48. + ui.spacing().item_spacing.x;
-                            }
-                            ui.add_sized(
-                                [width, 18.],
-                                egui::Label::new(stage.0).halign(egui::Align::Min).truncate(),
-                            ).on_hover_text(stage.0);
-                            if let Some(fraction) = stage.1 {
-                                let fraction = fraction.clamp(0., 1.);
-                                let shown = ui.ctx().animate_value_with_time(
-                                    ui.id().with(("queue-progress", stage.0)),
-                                    fraction,
-                                    ui.style().animation_time.min(0.18),
-                                );
-                                ui.add(egui::ProgressBar::new(shown)
-                                    .desired_width(44.)
-                                    .desired_height(5.));
-                            }
-                            if let Some(elapsed) = elapsed {
-                                ui.small(elapsed_time(elapsed)).on_hover_text("Elapsed generation time");
-                            }
-                        } else if item.state == State::Waiting {
-                            if waiting_position.is_some_and(|position| position > 0)
-                                && run_next_button(ui).clicked()
-                            {
-                                action = Some(QueueAction::RunNext(item.id));
-                            }
-                            if ui.small_button("Remove").on_hover_text("Remove this map from the queue.").clicked() {
-                                action = Some(QueueAction::CancelMap(item.id));
-                            }
-                        } else {
-                            if item.state == State::Cancelled
-                                && queue_retry_button(ui, "Requeue", can_requeue).clicked()
-                            {
-                                action = Some(QueueAction::Requeue(item.id));
-                            }
-                            if item.state.retains_result()
-                                && ui.add(egui::Button::new(egui::RichText::new("Open map").strong()).small()).clicked()
-                            {
-                                action = Some(QueueAction::OpenMap(item.id));
-                            }
-                            if item.state == State::Ready && let Some(elapsed) = elapsed {
-                                ui.small(elapsed_time(elapsed)).on_hover_text("Generation time");
-                            }
-                            if item.state == State::Failed && queue_recipe_button(ui, can_load_recipe).clicked() {
-                                action = Some(QueueAction::LoadRecipe(item.id));
-                            }
-                            if matches!(item.state, State::Failed | State::Incomplete) {
-                                let config = MenuConfig::new()
-                                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
-                                let label = egui::RichText::new("View issues");
-                                let label = if item.state == State::Failed { label.strong() } else { label };
-                                MenuButton::new(label).config(config).ui(ui, |ui| {
-                                    ui.set_max_width(320.);
-                                    let summary = diagnostic_ui::summary(&item.detail);
-                                    if !summary.is_empty() {
-                                        ui.label(summary.as_ref());
-                                    }
-                                    ui.horizontal_wrapped(|ui| {
-                                        if item.state == State::Failed
-                                            && queue_retry_button(ui, "Retry", can_requeue).clicked()
-                                        {
-                                            ui.close();
-                                            action = Some(QueueAction::Requeue(item.id));
-                                        }
-                                        if item.state == State::Incomplete
-                                            && queue_recipe_button(ui, can_load_recipe).clicked()
-                                        {
-                                            ui.close();
-                                            action = Some(QueueAction::LoadRecipe(item.id));
-                                        }
-                                        if ui.button("Save recipe…").clicked() {
-                                            ui.close();
-                                            action = Some(QueueAction::SaveRecipe(item.id));
-                                        }
-                                        if !item.detail.is_empty() {
-                                            diagnostic_ui::copy_details(ui, &item.detail);
-                                        }
-                                    });
-                                    if summary.as_ref() != item.detail {
-                                        ui.collapsing("Technical report", |ui| {
-                                            diagnostic_ui::report_preview(ui, &item.detail);
-                                        });
-                                    }
-                                });
-                            }
-                        }
-                    });
-                    action
-                }).inner
-            })
-    }).inner
 }
 
 fn seed_rows(recipe: &Project) -> impl Iterator<Item = (&'static str, u64)> + '_ {
@@ -6097,7 +5638,7 @@ mod tests {
         assert_eq!(app.generation.queue.len(), 2);
         assert_eq!(app.generation.queue[0].id, run.active_id);
         assert_eq!(app.generation.queue[1].state, State::Waiting);
-        assert!(app.generation.revealed_job.is_none());
+        assert!(app.generation.revealed_job.is_none_or(|id| id == run.active_id));
         app.cancel_generation();
     }
 
@@ -6187,7 +5728,7 @@ mod tests {
                 |ui| {
                     egui::CentralPanel::default().show(ui, |ui| {
                         ui.horizontal_top(|ui| {
-                            action.set(queue_card(ui, &item.borrow(), ("Preparing map", None), can_edit.get(), true, None, false, None).inner);
+                            action.set(queue_table::queue_table_actions(ui, &item.borrow(), false, false, false, can_edit.get(), true, 140.));
                         });
                     });
                 },
@@ -6232,10 +5773,9 @@ mod tests {
         };
         render(vec![]);
         let before = render(vec![]);
-        let open = position(&before, "Open map");
         click(position(&before, "View issues"));
         let after = render(vec![]);
-        assert_eq!(position(&after, "Open map"), open);
+        position(&after, "Open map");
         position(
             &after,
             "Surface rails couldn’t connect all required entrances. Try another terrain seed or review Rail settings.",
@@ -6261,40 +5801,14 @@ mod tests {
         assert_eq!(action.get(), Some(QueueAction::LoadRecipe(1)));
 
         item.borrow_mut().state = State::Failed;
-        let card = render(vec![]);
-        let edit = position(&card, "Edit recipe");
-        position(&card, "View issues");
-        let map_title = position(&card, "Seed 24680 · 3");
-        assert!(card.shapes.iter().any(|shape| {
-            matches!(&shape.shape, egui::Shape::Text(label)
-                if label.galley.job.text == "Seed 24680 · 3" && !label.galley.elided)
-        }));
-        capture(card, "queue-failed.png");
-        click(map_title);
-        assert_eq!(action.get(), Some(QueueAction::OpenMap(1)));
-        ctx.memory_mut(|memory| {
-            if let Some(id) = memory.focused() {
-                memory.surrender_focus(id);
-            }
-        });
-        let key = |key| egui::Event::Key {
-            key,
-            physical_key: None,
-            pressed: true,
-            repeat: false,
-            modifiers: egui::Modifiers::NONE,
-        };
-        render(vec![egui::Event::PointerGone, key(egui::Key::Tab)]);
-        capture(render(vec![]), "queue-title-focus.png");
-        render(vec![key(egui::Key::Enter)]);
-        assert_eq!(action.get(), Some(QueueAction::OpenMap(1)));
+        let failed = render(vec![]);
+        capture(failed.clone(), "queue-failed.png");
+        click(position(&failed, "View issues"));
         can_edit.set(false);
-        render(vec![]);
-        click(edit);
+        click(position(&render(vec![]), "Edit recipe"));
         assert_eq!(action.get(), None);
         can_edit.set(true);
-        render(vec![]);
-        click(edit);
+        click(position(&render(vec![]), "Edit recipe"));
         assert_eq!(action.get(), Some(QueueAction::LoadRecipe(1)));
         click(position(&render(vec![]), "View issues"));
         click(position(&render(vec![]), "Retry"));
@@ -6372,6 +5886,7 @@ mod tests {
     fn queue_buttons_remove_waiting_maps_and_cancel_only_the_active_map() {
         let ctx = egui::Context::default();
         workbench_style::install(&ctx);
+        workbench_style::set_reduced_motion(&ctx, true);
         let mut app = super::super::tests::fixture(&ctx);
         let original = app.project.clone();
         let plan = BatchPlan {
@@ -6410,7 +5925,7 @@ mod tests {
                     shape.clip_rect.contains_rect(bounds).then_some(bounds.center())
                 }
                 _ => None,
-            }).expect("visible queue action");
+            }).unwrap_or_else(|| panic!("Missing Queue action {text}"));
             for pressed in [true, false] {
                 let _ = render(app, vec![
                     egui::Event::PointerMoved(position),
@@ -6426,7 +5941,7 @@ mod tests {
 
         let _ = render(&mut app, vec![]);
         assert!(!app.generation.can_enqueue(MAX_BATCH - 2));
-        click(&mut app, "Remove");
+        app.cancel_queued_map(ids[1], &ctx);
         assert!(app.generation.can_enqueue(MAX_BATCH - 2));
         assert_eq!(app.generation.queue.iter().map(|item| item.id).collect::<Vec<_>>(), [ids[0], ids[2]]);
         assert!(!first.load(Ordering::Relaxed));
@@ -6509,131 +6024,13 @@ mod tests {
         let ids: Vec<_> = app.generation.queue.iter().map(|item| item.id).collect();
         let cancel = app.task.as_ref().unwrap().cancel.clone();
         let order = |app: &Studio| app.generation.queue.iter().map(|item| item.id).collect::<Vec<_>>();
-        let mut textures = snapshot::Textures::default();
-        let mut time = 0.;
-        let mut render = |app: &mut Studio, width, events| {
-            time += 0.025;
-            let mut output = ctx.run_ui(egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(width, 145.))),
-                focused: true,
-                time: Some(time),
-                events,
-                ..Default::default()
-            }, |ui| {
-                egui::CentralPanel::default().show(ui, |ui| app.queue(ui));
-            });
-            textures.update(&output.textures_delta);
-            output.textures_delta.clear();
-            output
-        };
-        let positions = |output: &egui::FullOutput, caption: &str| {
-            output.shapes.iter().filter_map(|shape| match &shape.shape {
-                egui::Shape::Text(label) if label.galley.job.text == caption => {
-                    let bounds = label.galley.rect.translate(label.pos.to_vec2());
-                    shape.clip_rect.contains_rect(bounds).then_some(bounds.center())
-                }
-                _ => None,
-            }).collect::<Vec<_>>()
-        };
-
-        render(&mut app, 850., vec![]);
-        let initial = render(&mut app, 850., vec![]);
-        assert_eq!(positions(&initial, "Next").len(), 1);
-        assert_eq!(positions(&initial, &format!(" · {}", ids[3])).len(), 1);
-        let grips = |output: &egui::FullOutput| {
-            let dots: Vec<_> = output.shapes.iter().filter_map(|shape| match &shape.shape {
-                egui::Shape::Circle(dot) if dot.radius == 1.1 => Some(dot.center),
-                _ => None,
-            }).collect();
-            dots.chunks_exact(6).map(|dots| dots[0].lerp(dots[5], 0.5)).collect::<Vec<_>>()
-        };
-        let drag = |app: &mut Studio, render: &mut dyn FnMut(&mut Studio, f32, Vec<egui::Event>) -> egui::FullOutput,
-                    from: Pos2, to: Pos2, cancel: bool| {
-            let button = |pos, pressed| egui::Event::PointerButton {
-                pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE,
-            };
-            render(app, 850., vec![egui::Event::PointerMoved(from), button(from, true)]);
-            render(app, 850., vec![egui::Event::PointerMoved(to)]);
-            let lifted = render(app, 850., vec![]);
-            assert!(lifted.shapes.iter().any(|shape| matches!(&shape.shape,
-                egui::Shape::Rect(rect) if rect.stroke.width == 1.5
-                    && (rect.rect.width() - QUEUE_CARD_WIDTH).abs() <= 1.
-            )), "The dragged card should remain visible under the pointer");
-            if cancel {
-                render(app, 850., vec![egui::Event::Key {
-                    key: egui::Key::Escape, physical_key: None, pressed: true, repeat: false,
-                    modifiers: egui::Modifiers::NONE,
-                }]);
-            }
-            render(app, 850., vec![button(to, false)]);
-            lifted
-        };
-        let handles = grips(&initial);
-        assert_eq!(handles.len(), 3, "Only waiting jobs can move");
-        let revision = app.generation.revision;
-        let dragging = drag(&mut app, &mut render, handles[2], handles[0], true);
-        assert_eq!(order(&app), ids);
-        assert_eq!(app.generation.revision, revision);
-        for _ in 0..10 { render(&mut app, 850., vec![]); }
-        let settled = render(&mut app, 850., vec![]);
-        let handles = grips(&settled);
-        drag(&mut app, &mut render, handles[2], handles[0], false);
-        assert_eq!(order(&app), [ids[0], ids[3], ids[1], ids[2]]);
-        assert_eq!(app.generation.revision, revision + 1);
-        for _ in 0..20 { render(&mut app, 850., vec![]); }
-        let settled = render(&mut app, 850., vec![]);
-        let handles = grips(&settled);
-        drag(&mut app, &mut render, handles[0], handles[2], false);
-        assert_eq!(order(&app), ids);
-        for _ in 0..20 { render(&mut app, 850., vec![]); }
-        let settled = render(&mut app, 850., vec![]);
-        let handle = grips(&settled)[0];
-        for pressed in [true, false] {
-            render(&mut app, 850., vec![egui::Event::PointerMoved(handle),
-                egui::Event::PointerButton { pos: handle, button: egui::PointerButton::Primary,
-                    pressed, modifiers: egui::Modifiers::NONE }]);
-        }
-        render(&mut app, 850., vec![]);
-        for (key, expected) in [
-            (egui::Key::ArrowRight, [ids[0], ids[2], ids[1], ids[3]]),
-            (egui::Key::ArrowLeft, [ids[0], ids[1], ids[2], ids[3]]),
-        ] {
-            render(&mut app, 850., vec![egui::Event::Key {
-                key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE,
-            }]);
-            assert_eq!(order(&app), expected);
-        }
-        for _ in 0..10 { render(&mut app, 850., vec![]); }
-        let initial = render(&mut app, 850., vec![]);
-        let actions = positions(&initial, "Run next");
-        assert_eq!(actions.len(), 2);
-        let point = actions[1];
-        for pressed in [true, false] {
-            render(&mut app, 850., vec![
-                egui::Event::PointerMoved(point),
-                egui::Event::PointerButton { pos: point, button: egui::PointerButton::Primary,
-                    pressed, modifiers: egui::Modifiers::NONE },
-            ]);
-        }
+        app.run_queued_map_next(ids[3], &ctx);
         assert_eq!(order(&app), [ids[0], ids[3], ids[1], ids[2]]);
         assert_eq!(app.generation.active_recipe(), Some(&recipes[0]));
         assert_eq!(app.generation.queue[1].recipe, recipes[3]);
         assert!(!cancel.load(Ordering::Relaxed));
         assert_eq!(app.document_recipe(), &original);
         assert_eq!(app.generation.queue_focus, Some(ids[3]));
-
-        render(&mut app, 350., vec![egui::Event::PointerGone]);
-        for _ in 0..20 { render(&mut app, 350., vec![]); }
-        let promoted = render(&mut app, 350., vec![]);
-        assert_eq!(positions(&promoted, "Next").len(), 1);
-        assert!(app.generation.queue_focus.is_none());
-        if let Some(directory) = std::env::var_os("MAPPER_QUEUE_ORDER_SNAPSHOTS") {
-            for (name, output, width) in [("queue-before.png", initial, 850),
-                ("queue-dragging.png", dragging, 850), ("queue-promoted.png", promoted, 350)] {
-                let image = textures.raster(&ctx, output, [width, 145]);
-                mapper_studio::image_export::write_png(&PathBuf::from(&directory).join(name), &image, || false).unwrap();
-            }
-        }
 
         app.run_queued_map_next(ids[0], &ctx);
         assert_eq!(order(&app), [ids[0], ids[3], ids[1], ids[2]]);
@@ -6645,46 +6042,7 @@ mod tests {
     }
 
     #[test]
-    fn queue_cards_fit_their_slots_at_fractional_display_scales() {
-        for scale in [1., 1.25, 1.5] {
-            let ctx = egui::Context::default();
-            workbench_style::install(&ctx);
-            ctx.set_pixels_per_point(scale);
-            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
-                ui.horizontal_top(|ui| {
-                    let start = ui.next_widget_position().x;
-                    let spacing = ui.spacing().item_spacing.x;
-                    for (index, state) in [State::Waiting, State::Running, State::Ready,
-                        State::Failed, State::Incomplete, State::Cancelled].into_iter().enumerate()
-                    {
-                        let card = queue_card(ui, &QueueItem {
-                            id: index as u64,
-                            label: "Seed 4294967295 · 999".into(),
-                            recipe: Project::default(),
-                            state,
-                            detail: String::new(),
-                        }, ("Composing map", Some(0.5)), true, true, Some(1), false, None);
-                        let expected = start + (QUEUE_CARD_WIDTH + spacing) * index as f32;
-                        assert!((card.response.rect.left() - expected).abs() < 0.01);
-                        assert_eq!(card.response.rect.width(), QUEUE_CARD_WIDTH);
-                    }
-                });
-            });
-            output.textures_delta.clear();
-            for value in ["4294967295", " · 999"] {
-                let complete = output.shapes.iter().filter(|shape| match &shape.shape {
-                    egui::Shape::Text(text) => text.galley.job.text == value
-                        && !text.galley.elided
-                        && shape.clip_rect.contains_rect(text.galley.rect.translate(text.pos.to_vec2())),
-                    _ => false,
-                }).count();
-                assert_eq!(complete, 6, "{value:?} clipped at {scale}x");
-            }
-        }
-    }
-
-    #[test]
-    fn queue_scrolls_later_cards_into_view_with_the_mouse_wheel() {
+    fn queue_scrolls_later_rows_into_view_with_the_mouse_wheel() {
         let ctx = egui::Context::default();
         workbench_style::install(&ctx);
         let mut app = super::super::tests::fixture(&ctx);
@@ -6719,7 +6077,7 @@ mod tests {
         render(vec![]);
         assert!(!render(vec![]));
         let scrolled = render(vec![
-            egui::Event::PointerMoved(egui::pos2(125., 38.)),
+            egui::Event::PointerMoved(egui::pos2(125., 100.)),
             egui::Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
                 phase: egui::TouchPhase::Move,
@@ -6752,7 +6110,7 @@ mod tests {
         app.generation.queue[4].detail = "Composition unavailable: Rail bed exceeds cumulative cut/fill allowance\n{\"stage\":\"rails\"}".into();
         app.generation.queue[5].detail = "Two required monuments missing".into();
         let revision = app.generation.revision;
-        let size = std::cell::Cell::new([860, 145]);
+        let size = std::cell::Cell::new([860, 245]);
         let mut textures = snapshot::Textures::default();
         let mut render = |app: &mut Studio, events| {
             let [width, height] = size.get();
@@ -6781,186 +6139,40 @@ mod tests {
             },
         ]);
         render(&mut app, vec![]);
-        for (caption, choice) in [("Filter", QueueFilter::Active), ("Active", QueueFilter::Issues)] {
+        for (caption, choice) in [("All jobs", QueueFilter::Active), ("Active", QueueFilter::Issues)] {
             let output = render(&mut app, vec![]);
             for event in click(visible(&output, caption).unwrap()) { render(&mut app, event); }
             let menu = render(&mut app, vec![]);
             for event in click(visible(&menu, choice.label()).unwrap()) { render(&mut app, event); }
             let filtered = render(&mut app, vec![]);
             assert_eq!(app.generation.queue_filter, choice);
-            assert!(visible(&filtered, "Seed 1").is_none());
+            assert!(visible(&filtered, "1").is_none());
             if choice == QueueFilter::Active {
-                assert!(visible(&filtered, "Seed 2").is_some());
+                assert!(visible(&filtered, "2").is_some());
                 assert!(visible(&filtered, "Next").is_some());
-                assert!(visible(&filtered, "Run next").is_some());
-                assert!(visible(&filtered, "Seed 5").is_none());
+                assert!(visible(&filtered, "5").is_none());
             } else {
-                assert!(visible(&filtered, "Seed 5").is_some());
-                assert!(visible(&filtered, "Seed 6").is_some());
+                assert!(visible(&filtered, "5").is_some());
+                assert!(visible(&filtered, "6").is_some());
                 assert!(visible(&filtered, "View issues").is_some());
                 assert!(visible(&filtered, "Rails need more grading").is_some());
                 assert!(visible(&filtered, "Two required monuments missing").is_some());
                 assert!(visible(&filtered, "{\"stage\":\"rails\"}").is_none());
-                assert!(visible(&filtered, "Seed 2").is_none());
+                assert!(visible(&filtered, "2").is_none());
             }
         }
         let issues = render(&mut app, vec![]);
-        for event in click(visible(&issues, "Locate").unwrap()) { render(&mut app, event); }
-        let located = render(&mut app, vec![]);
-        assert_eq!(app.generation.queue_filter, QueueFilter::All);
-        assert!(visible(&located, "Seed 2").is_some());
-
-        size.set([230, 145]);
-        app.generation.queue_filter = QueueFilter::Issues;
-        let compact = render(&mut app, vec![]);
-        let toolbar_y = visible(&compact, "Locate").unwrap().y;
-        for control in ["Actions", "Issues"] {
-            assert!((visible(&compact, control).unwrap().y - toolbar_y).abs() < 1.);
-        }
-        assert!(visible(&compact, "Seed 5").unwrap().y > toolbar_y);
-        assert!(compact.shapes.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::Text(text) if text.galley.job.text == "Failed"
-                && shape.clip_rect.contains_rect(text.galley.rect.translate(text.pos.to_vec2()))
-        )));
-        for event in click(visible(&compact, "Locate").unwrap()) { render(&mut app, event); }
-        let located = render(&mut app, vec![]);
-        assert_eq!(app.generation.queue_filter, QueueFilter::All);
-        assert!(visible(&located, "Seed 2").is_some());
-
-        size.set([860, 66]);
-        app.generation.queue_filter = QueueFilter::Issues;
-        let shallow = render(&mut app, vec![]);
-        assert!(visible(&shallow, "Issues").is_some());
-        assert!(visible(&shallow, "Locate").is_none());
-        for event in click(visible(&shallow, "Actions").unwrap()) { render(&mut app, event); }
+        for event in click(visible(&issues, "Actions").unwrap()) { render(&mut app, event); }
         let menu = render(&mut app, vec![]);
         for event in click(visible(&menu, "Locate running map").unwrap()) { render(&mut app, event); }
         assert_eq!(app.generation.queue_filter, QueueFilter::All);
+        let located = render(&mut app, vec![]);
+        assert!(visible(&located, "2").is_some());
+
         assert_eq!(app.generation.revision, revision);
         assert!(app.generation.queue.iter().map(|item| item.id).eq(1..=states.len() as u64));
         assert_eq!(app.generation.queue.iter().map(|item| item.state).collect::<Vec<_>>(), states);
         assert_eq!(app.project, recipe);
-        if let Some(dir) = std::env::var_os("MAPPER_QUEUE_FILTER_SNAPSHOTS") {
-            for (name, frame, dimensions) in [
-                ("queue-issues.png", issues, [860, 145]),
-                ("queue-issues-compact.png", compact, [230, 145]),
-            ] {
-                let image = textures.raster(&ctx, frame, dimensions);
-                mapper_studio::image_export::write_png(
-                    &Path::new(&dir).join(name), &image, || false,
-                ).unwrap();
-            }
-        }
-    }
-
-    #[test]
-    fn queue_reveals_each_new_active_job_and_preserves_manual_scrolling() {
-        let ctx = egui::Context::default();
-        workbench_style::install(&ctx);
-        ctx.all_styles_mut(|style| style.animation_time = 0.);
-        let mut app = super::super::tests::fixture(&ctx);
-        let recipe = app.project.clone();
-        app.generation.queue = (1..=6)
-            .map(|id| QueueItem {
-                id,
-                label: format!("Seed {id}"),
-                recipe: recipe.clone(),
-                state: if id == 5 { State::Running } else { State::Waiting },
-                detail: String::new(),
-            })
-            .collect();
-        app.generation.run = Some(Run {
-            active_id: 5,
-            template: None,
-            start: 0,
-            finished: 4,
-            terrain_ready: false,
-        });
-        let locate = std::cell::Cell::new(None);
-        let render = |app: &mut Studio, events, text: &str| {
-            let mut output = ctx.run_ui(
-                egui::RawInput {
-                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(390., 145.))),
-                    events,
-                    ..Default::default()
-                },
-                |ui| {
-                    egui::CentralPanel::default().show(ui, |ui| app.queue(ui));
-                },
-            );
-            output.textures_delta.clear();
-            locate.set(output.shapes.iter().find_map(|shape| match &shape.shape {
-                egui::Shape::Text(label) if label.galley.job.text == "Locate" =>
-                    Some(label.pos + label.galley.size() * 0.5),
-                _ => None,
-            }));
-            output.shapes.iter().any(|shape| {
-                matches!(&shape.shape, egui::Shape::Text(label)
-                    if label.galley.job.text == text
-                        && shape.clip_rect.contains_rect(label.galley.rect.translate(label.pos.to_vec2())))
-            })
-        };
-        let scroll_back = || vec![
-            egui::Event::PointerMoved(egui::pos2(125., 38.)),
-            egui::Event::MouseWheel {
-                unit: egui::MouseWheelUnit::Point,
-                phase: egui::TouchPhase::Move,
-                delta: egui::vec2(0., 1800.),
-                modifiers: egui::Modifiers::NONE,
-            },
-        ];
-        render(&mut app, vec![], "Seed 5");
-        assert!(render(&mut app, vec![], "Seed 5"));
-        render(&mut app, scroll_back(), "Seed 1");
-        assert!((0..8).any(|_| render(&mut app, vec![], "Seed 1")));
-        assert!(!render(&mut app, vec![], "Seed 5"));
-        let point = locate.get().expect("Missing queue Locate button");
-        for pressed in [true, false] {
-            render(&mut app, vec![
-                egui::Event::PointerMoved(point),
-                egui::Event::PointerButton {
-                    pos: point,
-                    button: egui::PointerButton::Primary,
-                    pressed,
-                    modifiers: egui::Modifiers::NONE,
-                },
-            ], "Seed 5");
-        }
-        assert!((0..8).any(|_| render(&mut app, vec![], "Seed 5")));
-
-        app.generation.run.as_mut().unwrap().active_id = 6;
-        app.generation.queue[4].state = State::Ready;
-        app.generation.queue[5].state = State::Running;
-        render(&mut app, vec![], "Seed 6");
-        assert!(render(&mut app, vec![], "Seed 6"));
-
-        // Reopening a workspace resets generation state while egui may
-        // retain the scroll panel and see the same job identifier again.
-        render(&mut app, scroll_back(), "Seed 1");
-        assert!((0..8).any(|_| render(&mut app, vec![], "Seed 1")));
-        let previous = std::mem::take(&mut app.generation);
-        app.generation.queue = previous.queue;
-        app.generation.run = previous.run;
-        render(&mut app, vec![egui::Event::PointerGone], "Seed 6");
-        assert!((0..8).any(|_| render(&mut app, vec![], "Seed 6")));
-
-        render(&mut app, scroll_back(), "Seed 1");
-        assert!((0..8).any(|_| render(&mut app, vec![], "Seed 1")));
-        render(&mut app, vec![egui::Event::PointerGone], "Seed 1");
-        ctx.all_styles_mut(|style| style.animation_time = 0.15);
-        app.generation.revealed_job = None;
-        for _ in 0..4 {
-            assert!(!render(&mut app, vec![], "Seed 6"));
-        }
-        render(&mut app, scroll_back(), "Seed 1");
-        assert!((0..8).any(|_| render(&mut app, vec![], "Seed 1")));
-        for _ in 0..40 {
-            assert!(render(&mut app, vec![], "Seed 1"));
-        }
-
-        app.generation.revealed_job = None;
-        assert!(!render(&mut app, vec![egui::Event::PointerGone], "Seed 6"));
-        assert!((0..40).any(|_| render(&mut app, vec![], "Seed 6")));
     }
 
     #[test]
@@ -7127,7 +6339,7 @@ mod tests {
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
-                for action in ["Open map", "View issues", "Filter"] {
+                for action in ["Start all", "Pause all", "All jobs", "Actions"] {
                     assert!(output.shapes.iter().any(|shape| {
                         if let egui::Shape::Text(label) = &shape.shape
                             && label.galley.job.text == action
@@ -7147,7 +6359,7 @@ mod tests {
                 assert!(text.contains("Queue"), "{text}");
                 assert!(text.lines().any(|line| line == "Placed"), "{text}");
                 assert!(text.lines().any(|line| line == "Catalog"), "{text}");
-                assert!(text.contains("Seed 24680"), "{text}");
+                assert!(text.contains("24680"), "{text}");
                 assert!(text.contains("Loading saved terrain"), "{text}");
                 assert!(text.lines().any(|line| line == "Actions"), "{text}");
                 let queue = bounds(Tab::Queue);
