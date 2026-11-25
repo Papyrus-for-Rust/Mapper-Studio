@@ -76,9 +76,10 @@ internal static unsafe class Program
         var snapshotMilliseconds = 0d; var snapshotCount = 0;
         void Snapshot(int stage)
         {
-            if (!live) return;
+            // Preview work is optional. Keep the last frame if earlier captures used the budget.
+            if (!live || snapshotMilliseconds >= 75d) return;
             var clock = Stopwatch.StartNew();
-            const int n = 129;
+            const int n = 257;
             var sampled = new short[n * n];
             for (var z = 0; z < n; z++) for (var x = 0; x < n; x++) sampled[z * n + x] = height[z * (hr - 1) / (n - 1) * hr + x * (hr - 1) / (n - 1)];
             byte[] Sample(byte[] layer, int channels)

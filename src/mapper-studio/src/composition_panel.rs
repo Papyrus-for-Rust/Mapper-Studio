@@ -488,18 +488,20 @@ impl CompositionPanel {
                 let preview_repaint = repaint.clone();
                 let last_preview = std::cell::Cell::new(None::<std::time::Instant>);
                 let _live = composition::LivePreviewScope::new(move |maps| {
+                    let started = std::time::Instant::now();
                     let cancelled = || preview_cancel.load(Ordering::Relaxed)
-                        || !live_enabled.load(Ordering::Relaxed);
+                        || !live_enabled.load(Ordering::Relaxed)
+                        || started.elapsed() > std::time::Duration::from_millis(75);
                     if cancelled() || last_preview.get().is_some_and(|last| {
                         last.elapsed() < std::time::Duration::from_millis(350)
                     }) {
                         return;
                     }
+                    last_preview.set(Some(started));
                     if let Ok(Some(image)) = mapper_studio::map_image::render_composition_thumbnail(
                         maps, preview_palette.as_deref(), cancelled,
                     ) && let Ok(mut slot) = live_sink.lock() {
                         *slot = Some(image);
-                        last_preview.set(Some(std::time::Instant::now()));
                         preview_repaint.request_repaint();
                     }
                 });

@@ -1584,6 +1584,9 @@ pub(crate) fn compose_layout_with_session(
         return Ok(None);
     }
     record_timing(&mut timing, "gameplay_height_and_rail_meshes");
+    if project.objects.is_some() || maps.rails.is_some() {
+        publish_live_preview(&maps);
+    }
     if project.performance.monuments
         && let Some(recipe) = &project.monument_rules
         && let Some(binding) = &recipe.dungeon_source
