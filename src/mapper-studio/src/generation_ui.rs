@@ -1622,14 +1622,25 @@ impl Studio {
             ui.spacing_mut().item_spacing.x = 0.;
             let batch_width = 34_f32.min(width * 0.35);
             let background = ui.painter().add(egui::Shape::Noop);
-            let generate = ui.add_enabled(
-                can_press,
-                egui::Button::new(egui::RichText::new(label).strong().color(Color32::WHITE))
-                    .min_size(egui::vec2(width - batch_width, HEIGHT))
-                    .truncate()
-                    .frame(!enabled)
-                    .corner_radius(left),
-            );
+            let muted_light = !enabled && !ui.visuals().dark_mode;
+            let label_color = if muted_light {
+                ui.visuals().weak_text_color()
+            } else {
+                Color32::WHITE
+            };
+            let main_button = egui::Button::new(egui::RichText::new(label).strong().color(label_color))
+                .min_size(egui::vec2(width - batch_width, HEIGHT))
+                .truncate()
+                .frame(!enabled)
+                .corner_radius(left);
+            let generate = if muted_light {
+                ui.scope(|ui| {
+                    ui.visuals_mut().disabled_alpha = 1.;
+                    ui.add_enabled(can_press, main_button)
+                }).inner
+            } else {
+                ui.add_enabled(can_press, main_button)
+            };
             let batch = ui.add_enabled(
                 batch_enabled,
                 egui::Button::new("")
@@ -7337,6 +7348,34 @@ mod tests {
             assert_eq!(heights.upgrade().is_none(), candidate_preview);
             assert_eq!(app.texture.is_none(), candidate_preview);
         }
+    }
+
+    #[test]
+    fn disabled_generate_keeps_readable_text_in_light_mode() {
+        let ctx = egui::Context::default();
+        workbench_style::install(&ctx);
+        ctx.set_theme(egui::Theme::Light);
+        let mut app = super::super::tests::fixture(&ctx);
+        let mut frame = ctx.run_ui(egui::RawInput::default(), |ui| {
+            app.generate_split_button(ui, 260., false, Some(&GenerationBlocker::AssetsUnavailable));
+        });
+
+        frame.textures_delta.clear();
+        let text = frame.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.job.text == "Generate" => Some(text),
+            _ => None,
+        }).expect("disabled Generate label is painted");
+        let colors = &ctx.style_of(egui::Theme::Light).visuals;
+        let glyph = text.override_text_color.unwrap_or(text.galley.job.sections[0].format.color);
+        assert_eq!(glyph, colors.weak_text_color());
+        assert_eq!(text.opacity_factor, 1.);
+        let luminance = |color: Color32| {
+            let [r, g, b, _] = egui::Rgba::from(color).to_array();
+            0.2126 * r + 0.7152 * g + 0.0722 * b
+        };
+        let contrast = (luminance(colors.widgets.noninteractive.weak_bg_fill) + 0.05)
+            / (luminance(glyph) + 0.05);
+        assert!(contrast >= 4.5, "Generate label contrast was {contrast:.2}:1");
     }
 
     #[test]

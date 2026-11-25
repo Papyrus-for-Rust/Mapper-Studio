@@ -10,6 +10,50 @@ fn shortcut_button(
     egui::Button::new(label).shortcut_text(ctx.format_shortcut(&shortcut))
 }
 
+fn show_application_menu(
+    ui: &mut egui::Ui,
+    content: impl FnOnce(&mut egui::Ui, &str),
+) {
+    let buttons = ["File", "Edit", "View", "Generate", "Window", "Help"].map(|name| {
+        let response = ui.button(name);
+        let popup_id = egui::Popup::menu(&response).get_id();
+        (name, response, popup_id)
+    });
+
+    let ctx = ui.ctx();
+    let state = ui.id().with("active-application-menu");
+    let active = ctx.data(|data| data.get_temp::<egui::Id>(state))
+        .filter(|id| egui::Popup::is_id_open(ctx, *id));
+    let selected = if let Some(button) = buttons.iter().find(|(_, response, _)| response.clicked()) {
+        (Some(button.2) != active).then_some(button)
+    } else if active.is_some() {
+        buttons.iter().find(|(_, response, _)| response.hovered())
+            .or_else(|| buttons.iter().find(|(_, _, id)| Some(*id) == active))
+    } else {
+        None
+    };
+
+    let selected_id = selected.map(|button| button.2);
+    if active != selected_id
+        && let Some(id) = active
+    {
+        egui::Popup::close_id(ctx, id);
+    }
+    if let Some((name, response, id)) = selected {
+        if Some(*id) != active {
+            egui::Popup::open_id(ctx, *id);
+        }
+        egui::Popup::menu(response).open_memory(None).show(|ui| content(ui, name));
+    }
+    ctx.data_mut(|data| {
+        if let Some(id) = selected_id {
+            data.insert_temp(state, id);
+        } else {
+            data.remove::<egui::Id>(state);
+        }
+    });
+}
+
 impl Studio {
     pub(super) fn map_tab_path(&self) -> Option<egui_dock::TabPath> {
         self.dock.find_tab(&Tab::Map).or_else(|| {
@@ -166,7 +210,43 @@ impl Studio {
             }
         }
         egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| {
+            show_application_menu(ui, |ui, menu| self.application_menu_contents(ui, menu, command, save_as));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                self.project_io_controls(ui);
+                self.export_controls(ui);
+                let dirty = self.dirty();
+                let name = self
+                    .path
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .and_then(|p| p.to_str())
+                    .unwrap_or("Untitled project");
+                egui::Frame::new()
+                    .fill(ui.visuals().faint_bg_color)
+                    .stroke(ui.visuals().window_stroke)
+                    .corner_radius(12)
+                    .inner_margin(egui::Margin::symmetric(9, 2))
+                    .show(ui, |ui| ui.add_sized(
+                        egui::vec2(140., 18.),
+                        egui::Label::new(format!("{name}{}", if dirty { " *" } else { "" })).truncate(),
+                    )).response.on_hover_text(format!(
+                    "{name}\n{}",
+                    if dirty { "Unsaved changes" } else { "Saved" }
+                ));
+            });
+        });
+    }
+
+    fn application_menu_contents(
+        &mut self,
+        ui: &mut egui::Ui,
+        menu: &str,
+        command: egui::Modifiers,
+        save_as: egui::Modifiers,
+    ) {
+        let ctx = ui.ctx().clone();
+        match menu {
+            "File" => {
                 if ui
                     .add(shortcut_button(&ctx, "New project", command, egui::Key::N))
                     .clicked()
@@ -256,8 +336,8 @@ impl Studio {
                     ui.close();
                     self.request(Action::Close, &ctx);
                 }
-            });
-            ui.menu_button("Edit", |ui| {
+            }
+            "Edit" => {
                 if ui
                     .add_enabled(
                         self.can_step_edit(&ctx, false),
@@ -283,8 +363,8 @@ impl Studio {
                     ui.close();
                     self.settings_open = true;
                 }
-            });
-            ui.menu_button("View", |ui| {
+            }
+            "View" => {
                 ui.menu_button("Maps", |ui| self.map_tabs_menu(ui));
                 if self.generated_view_controls(ui) {
                     return;
@@ -308,8 +388,8 @@ impl Studio {
                 ui.checkbox(&mut self.show_preferences, "Placement guides")
                     .on_hover_text("Amber shows the requested area. The line leads to where Mapper placed the monument.");
                 ui.checkbox(&mut self.show_decoration, "Scenery models (3D)");
-            });
-            ui.menu_button("Generate", |ui| {
+            }
+            "Generate" => {
                 let idle = !self.generation_in_progress();
                 let readiness = self.generation_readiness();
                 let mut generate = ui.add_enabled(
@@ -351,8 +431,8 @@ impl Studio {
                     self.cancel_generation();
                     ui.close();
                 }
-            });
-            ui.menu_button("Window", |ui| {
+            }
+            "Window" => {
                 for (tab, label) in [
                     (Tab::Recipe, "Recipe"),
                     (Tab::Outliner, "Monuments"),
@@ -372,39 +452,17 @@ impl Studio {
                     ui.close();
                     self.reset_layout = true;
                 }
-            });
-            ui.menu_button("Help", |ui| {
+            }
+            "Help" => {
                 ui.label("Mapper for Rust");
                 ui.small(format!("Version {}", self.updates.version().unwrap_or(env!("CARGO_PKG_VERSION"))));
                 if ui.button("Check for updates…").clicked() {
                     self.updates.check(ui.ctx(), true);
                     ui.close();
                 }
-            });
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                self.project_io_controls(ui);
-                self.export_controls(ui);
-                let dirty = self.dirty();
-                let name = self
-                    .path
-                    .as_ref()
-                    .and_then(|p| p.file_name())
-                    .and_then(|p| p.to_str())
-                    .unwrap_or("Untitled project");
-                egui::Frame::new()
-                    .fill(ui.visuals().faint_bg_color)
-                    .stroke(ui.visuals().window_stroke)
-                    .corner_radius(12)
-                    .inner_margin(egui::Margin::symmetric(9, 2))
-                    .show(ui, |ui| ui.add_sized(
-                        egui::vec2(140., 18.),
-                        egui::Label::new(format!("{name}{}", if dirty { " *" } else { "" })).truncate(),
-                    )).response.on_hover_text(format!(
-                    "{name}\n{}",
-                    if dirty { "Unsaved changes" } else { "Saved" }
-                ));
-            });
-        });
+            }
+            _ => unreachable!("unknown application menu"),
+        }
     }
 }
 
@@ -423,6 +481,57 @@ mod tests {
             let center = text.pos + text.galley.rect.center().to_vec2();
             (text.galley.job.text == label && shape.clip_rect.contains(center)).then_some(center)
         })
+    }
+
+    #[test]
+    fn open_application_menus_follow_the_pointer_in_both_directions() {
+        let ctx = egui::Context::default();
+        workbench_style::install(&ctx);
+        let mut app = super::super::tests::fixture(&ctx);
+        let mut draw = |events| {
+            let mut frame = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(720., 320.))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| app.toolbar(ui),
+            );
+            frame.textures_delta.clear();
+            frame
+        };
+        draw(vec![]);
+        let idle = draw(vec![]);
+        let edit = label_position(&idle, "Edit").unwrap();
+        let view = label_position(&idle, "View").unwrap();
+        let hover = draw(vec![egui::Event::PointerMoved(view)]);
+        assert!(label_position(&hover, "No-build zones").is_none());
+
+        let click = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            pressed,
+            button: egui::PointerButton::Primary,
+            modifiers: egui::Modifiers::NONE,
+        };
+        draw(vec![egui::Event::PointerMoved(edit), click(edit, true)]);
+        draw(vec![click(edit, false)]);
+        assert!(label_position(&draw(vec![]), "Settings…").is_some());
+
+        draw(vec![egui::Event::PointerMoved(view)]);
+        let switched = draw(vec![]);
+        assert!(label_position(&switched, "No-build zones").is_some());
+        assert!(label_position(&switched, "Settings…").is_none());
+
+        draw(vec![egui::Event::PointerMoved(edit)]);
+        let returned = draw(vec![]);
+        assert!(label_position(&returned, "Settings…").is_some());
+        assert!(label_position(&returned, "No-build zones").is_none());
+
+        draw(vec![click(edit, true)]);
+        draw(vec![click(edit, false)]);
+        let closed = draw(vec![egui::Event::PointerMoved(view)]);
+        assert!(label_position(&closed, "Settings…").is_none());
+        assert!(label_position(&closed, "No-build zones").is_none());
     }
 
     #[test]
