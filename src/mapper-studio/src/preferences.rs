@@ -1,6 +1,13 @@
 //! Machine-local preferences; portable recipes retain source fingerprints only.
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+
+pub const DEFAULT_UI_SCALE: u16 = 100;
+pub const UI_SCALE_PRESETS: [u16; 6] = [75, 90, DEFAULT_UI_SCALE, 110, 125, 150];
+
+fn is_default_ui_scale(percent: &u16) -> bool {
+    *percent == DEFAULT_UI_SCALE
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Appearance {
@@ -96,6 +103,8 @@ pub struct Preferences {
     pub installations: Vec<crate::installations::Entry>,
     pub selected_installation: Option<u64>,
     pub appearance: Appearance,
+    #[serde(skip_serializing_if = "is_default_ui_scale")]
+    pub ui_scale_percent: u16,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub reduce_motion: bool,
     pub live_generation: bool,
@@ -135,6 +144,7 @@ impl Default for Preferences {
             installations: Vec::new(),
             selected_installation: None,
             appearance: Appearance::Dark,
+            ui_scale_percent: DEFAULT_UI_SCALE,
             reduce_motion: false,
             live_generation: true,
             check_for_updates: true,
@@ -179,7 +189,10 @@ impl Preferences {
         if bytes.len() > 65536 {
             return Err("Settings exceed 64 KiB".into());
         }
-        let prefs: Self = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        let mut prefs: Self = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        if !UI_SCALE_PRESETS.contains(&prefs.ui_scale_percent) {
+            prefs.ui_scale_percent = DEFAULT_UI_SCALE;
+        }
         if prefs.schema != 1 {
             return Err("Unsupported settings version; existing file retained".into());
         }
@@ -217,6 +230,7 @@ mod tests {
         assert!(old.export_folder.is_none());
         assert!(old.decoration_models);
         assert!(!old.reduce_motion);
+        assert_eq!(old.ui_scale_percent, DEFAULT_UI_SCALE);
         assert_eq!(old.map_size_snap, MapSizeSnap::Meters50);
         let settings = Preferences {
             export_resolution: ImageResolution::Px4096,
@@ -273,6 +287,7 @@ mod tests {
         let p = Preferences {
             rust_folder: Some(PathBuf::from("C:/Games/Rust old")),
             appearance: Appearance::Light,
+            ui_scale_percent: 125,
             reduce_motion: true,
             live_generation: false,
             map_grid: true,

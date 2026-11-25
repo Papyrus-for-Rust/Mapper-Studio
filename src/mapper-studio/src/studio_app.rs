@@ -2609,6 +2609,7 @@ impl eframe::App for Studio {
             && !self.project_io.busy() && self.pending.is_none();
         self.updates.show(&ctx, self.path.as_deref(), can_restart);
         self.export_options(&ctx);
+        self.handle_ui_scale_shortcuts(&ctx);
         self.persist_preferences();
         self.history.finish_snapshot(
             before,

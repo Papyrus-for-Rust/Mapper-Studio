@@ -1,5 +1,5 @@
 use super::*;
-use mapper_studio::preferences::{Appearance, Preferences};
+use mapper_studio::preferences::{Appearance, DEFAULT_UI_SCALE, Preferences, UI_SCALE_PRESETS};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(super) enum Page {
     #[default]
@@ -65,6 +65,35 @@ impl Studio {
             Appearance::Light => egui::ThemePreference::Light,
         });
         workbench_style::set_reduced_motion(ctx, self.preferences.reduce_motion);
+        ctx.set_zoom_factor(f32::from(self.preferences.ui_scale_percent) / 100.);
+    }
+
+    fn set_ui_scale(&mut self, ctx: &egui::Context, percent: u16) {
+        if self.preferences.ui_scale_percent != percent {
+            self.preferences.ui_scale_percent = percent;
+            ctx.set_zoom_factor(f32::from(percent) / 100.);
+            self.save_preferences();
+        }
+    }
+
+    pub(super) fn handle_ui_scale_shortcuts(&mut self, ctx: &egui::Context) {
+        use egui::gui_zoom::kb_shortcuts::{ZOOM_IN, ZOOM_IN_SECONDARY, ZOOM_OUT, ZOOM_RESET};
+
+        let current = self.preferences.ui_scale_percent;
+        let next = ctx.input_mut(|input| {
+            if input.consume_shortcut(&ZOOM_RESET) {
+                Some(DEFAULT_UI_SCALE)
+            } else if input.consume_shortcut(&ZOOM_IN) || input.consume_shortcut(&ZOOM_IN_SECONDARY) {
+                UI_SCALE_PRESETS.iter().copied().find(|percent| *percent > current)
+            } else if input.consume_shortcut(&ZOOM_OUT) {
+                UI_SCALE_PRESETS.iter().rev().copied().find(|percent| *percent < current)
+            } else {
+                None
+            }
+        });
+        if let Some(percent) = next {
+            self.set_ui_scale(ctx, percent);
+        }
     }
     pub(super) fn load_preferences(&mut self, ctx: &egui::Context) {
         match Preferences::path()
@@ -87,6 +116,7 @@ impl Studio {
         self.show_monuments = self.preferences.monument_splats;
         self.show_decoration = self.preferences.decoration_models;
         let _ = mapper_studio::generation_resources::configure(self.preferences.generation_resources);
+        ctx.options_mut(|options| options.zoom_with_keyboard = false);
         self.apply_appearance(ctx);
     }
     pub(super) fn tick_preferences(&mut self, ctx: &egui::Context) {
@@ -351,6 +381,21 @@ impl Studio {
                 (Appearance::Light, "Light", "Use light appearance."),
             ]);
         });
+        let mut scale = self.preferences.ui_scale_percent;
+        preference_row(ui, "UI scale", |ui, label| {
+            egui::ComboBox::from_id_salt("ui-scale")
+                .width(90.)
+                .selected_text(format!("{scale}%"))
+                .show_ui(ui, |ui| {
+                    for percent in UI_SCALE_PRESETS {
+                        ui.selectable_value(&mut scale, percent, format!("{percent}%"));
+                    }
+                })
+                .response
+                .labelled_by(label)
+                .on_hover_text("Change the size of Mapper’s interface. Ctrl+0 resets to 100%.");
+        });
+        self.set_ui_scale(ctx, scale);
         let motion = preference_switch(ui, "Reduce interface motion", &mut self.preferences.reduce_motion,
             "Make panel transitions, queue scrolling, and progress updates immediate.").changed();
         if before != self.preferences.appearance || motion {
@@ -498,6 +543,78 @@ mod tests {
     use super::*;
     mod snapshot {
         include!("../examples/support/egui_snapshot.rs");
+    }
+
+    #[test]
+    fn appearance_scale_applies_and_persists() {
+        let ctx = egui::Context::default();
+        workbench_style::install(&ctx);
+        ctx.options_mut(|options| options.zoom_with_keyboard = false);
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("settings.json");
+        let mut app = super::super::tests::fixture(&ctx);
+        app.settings_open = true;
+        app.settings_page = Page::Appearance;
+        app.settings_path = Some(path.clone());
+        let project = app.project.clone();
+
+        let render = |app: &mut Studio, events| {
+            let mut output = ctx.run_ui(egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO, egui::vec2(1050., 720.) / ctx.zoom_factor(),
+                )),
+                focused: true,
+                events,
+                ..Default::default()
+            }, |_| {
+                app.settings_window(&ctx);
+                app.handle_ui_scale_shortcuts(&ctx);
+            });
+            output.textures_delta.clear();
+            output
+        };
+        let position = |output: &egui::FullOutput, label| {
+            output.shapes.iter().find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.job.text == label => {
+                    let center = text.pos + text.galley.rect.center().to_vec2();
+                    shape.clip_rect.contains(center).then_some(center)
+                }
+                _ => None,
+            }).unwrap_or_else(|| panic!("{label} should be visible"))
+        };
+        let click = |app: &mut Studio, point| {
+            for pressed in [true, false] {
+                render(app, vec![
+                    egui::Event::PointerMoved(point),
+                    egui::Event::PointerButton {
+                        pos: point, button: egui::PointerButton::Primary,
+                        pressed, modifiers: egui::Modifiers::NONE,
+                    },
+                ]);
+            }
+        };
+
+        render(&mut app, vec![]);
+        let initial = render(&mut app, vec![]);
+        click(&mut app, position(&initial, "100%"));
+        render(&mut app, vec![]);
+        let open = render(&mut app, vec![]);
+        click(&mut app, position(&open, "150%"));
+        render(&mut app, vec![]);
+        let scaled = render(&mut app, vec![]);
+        assert_eq!(ctx.zoom_factor(), 1.5);
+        position(&scaled, "UI scale");
+        position(&scaled, "Done");
+        assert_eq!(Preferences::load(&path).unwrap().ui_scale_percent, 150);
+
+        render(&mut app, vec![egui::Event::Key {
+            key: egui::Key::Num0, physical_key: None, pressed: true,
+            repeat: false, modifiers: egui::Modifiers::COMMAND,
+        }]);
+        render(&mut app, vec![]);
+        assert_eq!(ctx.zoom_factor(), 1.);
+        assert_eq!(Preferences::load(&path).unwrap().ui_scale_percent, 100);
+        assert_eq!(app.project, project);
     }
 
     #[test]
