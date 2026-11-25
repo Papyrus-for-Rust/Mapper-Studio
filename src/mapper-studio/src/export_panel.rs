@@ -98,6 +98,7 @@ impl ExportedFile {
         });
         if !self.folder_error.is_empty() {
             ui.colored_label(ui.visuals().error_fg_color, &self.folder_error);
+            crate::diagnostic_ui::copy_error(ui, &self.folder_error, None);
         }
     }
 }
@@ -244,6 +245,7 @@ pub(super) struct ImageExport {
     preview: RenderPreview,
     task: Option<Task>,
     message: String,
+    message_is_error: bool,
     exported: Option<ExportedFile>,
 }
 impl ImageExport {
@@ -294,6 +296,7 @@ impl ImageExport {
         });
         self.exported = None;
         self.message = format!("Exporting {width} × {height} map image…");
+        self.message_is_error = false;
         ctx.request_repaint();
     }
     pub fn poll(&mut self) -> Option<PathBuf> {
@@ -309,6 +312,7 @@ impl ImageExport {
             let task = self.task.take().unwrap();
             let completed = matches!(result, Ok(true)).then(|| task.path.clone());
             self.exported = completed.clone().map(ExportedFile::new);
+            self.message_is_error = result.is_err();
             self.message = match result {
                 Ok(true) => "Map image exported".into(),
                 Ok(false) => "Image export cancelled".into(),
@@ -328,6 +332,9 @@ impl ImageExport {
         if !message.is_empty() {
             ui.add(egui::Label::new(egui::RichText::new(message).small()).truncate())
                 .on_hover_text(message);
+        }
+        if self.message_is_error {
+            crate::diagnostic_ui::copy_error(ui, &self.message, None);
         }
         if let Some(exported) = &mut self.exported {
             exported.show(ui);

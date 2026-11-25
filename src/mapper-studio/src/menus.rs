@@ -23,26 +23,23 @@ impl Studio {
             .open(&mut open)
             .default_width(520.)
             .show(ctx, |ui| {
-                ui.label("Review the details below, then copy the code if you want to share them.");
-                ui.small("Anyone with the code can read these details. Mapper sends nothing automatically.");
-                egui::ScrollArea::vertical().max_height(300.).show(ui, |ui| {
-                    ui.add(egui::Label::new(egui::RichText::new(&preview).monospace()).selectable(true));
-                });
-                if ui.button("Copy support code").clicked() {
-                    ctx.copy_text(code);
-                }
+                diagnostic_ui::support_controls(ui, &preview, &code);
             });
         if !open {
             ctx.data_mut(|data| data.remove::<(String, String)>(id));
         }
     }
 
+    pub(super) fn support_environment(&self) -> diagnostic_ui::SupportEnvironment {
+        diagnostic_ui::SupportEnvironment {
+            version: self.updates.version().unwrap_or(env!("CARGO_PKG_VERSION")).into(),
+            installation: self.source.inspected_installation().cloned(),
+            profile: self.project.native_profile.clone(),
+        }
+    }
+
     fn open_support_snapshot(&mut self, ctx: &egui::Context) {
-        let snapshot = mapper_studio::support_snapshot::Snapshot::capture(
-            self.updates.version().unwrap_or(env!("CARGO_PKG_VERSION")),
-            self.source.inspected_installation(),
-            self.project.native_profile.as_ref(),
-        );
+        let snapshot = self.support_environment().snapshot(None);
         match (serde_json::to_string_pretty(&snapshot), snapshot.encode()) {
             (Ok(preview), Ok(code)) => ctx.data_mut(|data| {
                 data.insert_temp(egui::Id::new("support-snapshot"), (preview, code));

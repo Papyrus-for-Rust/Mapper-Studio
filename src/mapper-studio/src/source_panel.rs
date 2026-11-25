@@ -61,6 +61,7 @@ pub(super) struct SourcePanel {
     task: Option<Task>,
     pending: Option<PendingSource>,
     message: String,
+    message_is_error: bool,
     selected: Option<PathBuf>,
     watch: Option<Watch>,
     watch_probe: Option<Receiver<(PathBuf, installation::ChangeWatch)>>,
@@ -73,6 +74,7 @@ impl SourcePanel {
         let task = self.task.take();
         if task.is_some() || self.pending.is_some() || self.rebind.is_some() {
             self.message.clear();
+            self.message_is_error = false;
         }
         if let Some(task) = task {
             task.cancel.store(true, Ordering::Relaxed);
@@ -88,6 +90,7 @@ impl SourcePanel {
         self.binding = None;
         self.watch = None;
         self.message.clear();
+        self.message_is_error = false;
         if !keep_selection {
             self.selected = None;
         }
@@ -145,6 +148,7 @@ impl SourcePanel {
             preview_engine: project.preview_engine.clone(),
         });
         self.message = "Inspecting Rust installation…".into();
+        self.message_is_error = false;
     }
     fn poll(&mut self, project: &mut Project) {
         let Some(task) = &self.task else {
@@ -178,6 +182,7 @@ impl SourcePanel {
                 }
                 self.invalidate_root(&task.root);
                 self.message = error;
+                self.message_is_error = true;
             }
             Ok(identity) => {
                 let watch = watch.expect("Successful inspections include file hints");
@@ -230,6 +235,7 @@ impl SourcePanel {
         }) {
             self.pending = None;
             self.message = "Recipe source changed. Recheck the Rust folder.".into();
+            self.message_is_error = false;
         }
         self.poll_rebind(project);
         self.poll(project);
@@ -270,6 +276,7 @@ impl SourcePanel {
         });
         self.rebind = Some(RebindTask { saved: project.clone(), binding, receiver, cancel });
         self.message = "Preparing the recipe for this Rust installation…".into();
+        self.message_is_error = false;
     }
 
     fn poll_rebind(&mut self, project: &mut Project) {
@@ -303,7 +310,10 @@ impl SourcePanel {
                 self.source_changed = true;
                 self.message = "Rust installation switched.".into();
             }
-            Err(error) => self.message = error,
+            Err(error) => {
+                self.message = error;
+                self.message_is_error = true;
+            }
         }
     }
 
@@ -414,6 +424,12 @@ impl SourcePanel {
     pub fn setup_message(&self) -> &str {
         &self.message
     }
+    pub fn copy_inspection_error(&self, ui: &mut egui::Ui) {
+        if self.message_is_error {
+            super::diagnostic_ui::copy_error(ui, &self.message, None);
+        }
+    }
+
     pub fn settings(&mut self, ui: &mut egui::Ui, project: &mut Project, can_switch: bool) {
         ui.strong("Rust installation");
         ui.small("Source for game terrain and assets");
@@ -479,6 +495,7 @@ impl SourcePanel {
         if !self.message.is_empty() {
             ui.small(&self.message);
         }
+        self.copy_inspection_error(ui);
         let native_available = project.installation.as_ref().is_some_and(|s| {
             mapper_studio::native_profile::for_source(s, project.native_profile.as_ref()).is_ok()
         });
@@ -511,6 +528,7 @@ impl SourcePanel {
                         profile.matches(project.installation.as_ref().ok_or("Select a Rust installation first")?)?;
                         Ok(profile)
                     });
+                    self.message_is_error = result.is_err();
                     match result {
                         Ok(profile) => { project.native_profile = Some(profile); self.message = "Native profile recorded. Rebuild the terrain preview to apply it.".into(); }
                         Err(error) => self.message = error,
@@ -518,7 +536,9 @@ impl SourcePanel {
                 }
                 if ui.add_enabled(resolved.is_some(), egui::Button::new("Export native profile…")).clicked()
                     && let Some(path) = rfd::FileDialog::new().set_file_name("native-profile.json").add_filter("Papyrus native profile", &["json"]).save_file() {
-                    self.message = match mapper_studio::profile::write_document(&path, &resolved.unwrap(), true) {
+                    let result = mapper_studio::profile::write_document(&path, &resolved.unwrap(), true);
+                    self.message_is_error = result.is_err();
+                    self.message = match result {
                         Ok(()) => "Native compatibility profile exported.".into(), Err(error) => error,
                     };
                 }

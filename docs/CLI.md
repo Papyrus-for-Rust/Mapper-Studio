@@ -21,7 +21,7 @@ Use a fresh output path. Keep the exported map with its recipe if you plan to re
 
 ## Decode a support code
 
-In Mapper, open **Help → Support snapshot** to review what the code contains. Copy the code and share it with the person helping you.
+In Mapper, open **Settings → Support** to review and copy your support code. You can also use **Copy error message** on a failed map or an installation error to copy the full error and its support code together.
 
 ```powershell
 ./mapper.exe support decode "MPS1-PASTE_CODE_HERE"

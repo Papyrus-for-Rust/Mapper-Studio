@@ -830,6 +830,7 @@ impl Studio {
                     });
                     if !detail.is_empty() {
                         ui.add_space(6.);
+                        diagnostic_ui::copy_error(ui, detail, Some(&self.generation.queue[index].recipe));
                         ui.collapsing("Technical report", |ui| {
                             diagnostic_ui::copy_details(ui, detail);
                             if summary.as_ref() != detail {
@@ -1538,6 +1539,13 @@ impl Studio {
                 let unsupported_native = matches!(readiness, Err(GenerationBlocker::UnsupportedNativeProfile(_)));
                 if (needs_installation || unsupported_native) && ui.button("Rust installations…").clicked() {
                     self.open_installation_settings();
+                }
+                if !self.generation_in_progress()
+                    && let Err(issue @ (GenerationBlocker::MatchingInstallation
+                        | GenerationBlocker::UnsupportedNativeProfile(_)
+                        | GenerationBlocker::AssetsUnavailable)) = &readiness
+                {
+                    diagnostic_ui::copy_error(ui, issue.message(), None);
                 }
                 if matches!(readiness, Err(GenerationBlocker::AssetsUnavailable))
                     && ui.button("Retry asset loading").clicked()
@@ -2759,6 +2767,7 @@ impl Studio {
                     let summary = diagnostic_ui::summary(detail);
                     ui.label(summary.as_ref());
                     if !detail.is_empty() {
+                        diagnostic_ui::copy_error(ui, detail, Some(&result.recipe));
                         diagnostic_ui::copy_details(ui, detail);
                         if summary.as_ref() != detail {
                             ui.collapsing("Technical report", |ui| diagnostic_ui::report_preview(ui, detail));
@@ -2777,6 +2786,7 @@ impl Studio {
                     let detail = &result.archive_issue;
                     let summary = diagnostic_ui::summary(detail);
                     ui.label(summary.as_ref());
+                    diagnostic_ui::copy_error(ui, detail, Some(&result.recipe));
                     if summary.as_ref() != detail {
                         ui.collapsing("Technical report", |ui| diagnostic_ui::details(ui, detail));
                     }
@@ -3776,6 +3786,7 @@ fn queue_card(
                                             action = Some(QueueAction::SaveRecipe(item.id));
                                         }
                                         if !item.detail.is_empty() {
+                                            diagnostic_ui::copy_error(ui, &item.detail, Some(&item.recipe));
                                             diagnostic_ui::copy_details(ui, &item.detail);
                                         }
                                     });
@@ -6163,6 +6174,14 @@ mod tests {
     #[test]
     fn queue_issue_popover_saves_its_recipe_and_copies_the_full_report() {
         let ctx = egui::Context::default();
+        diagnostic_ui::set_support_environment(&ctx, diagnostic_ui::SupportEnvironment {
+            version: "0.1.0-beta.1".into(),
+            installation: None,
+            profile: None,
+        });
+        let mut app = super::super::tests::fixture(&ctx);
+        let _installation = require_matching_rust_installation(&mut app);
+        let expected_hash = app.project.installation.as_ref().unwrap().native.sha256.clone();
         workbench_style::install(&ctx);
         ctx.global_style_mut(|style| style.animation_time = 0.);
         let report = format!(
@@ -6172,7 +6191,7 @@ mod tests {
         let item = std::cell::RefCell::new(QueueItem {
             id: 1,
             label: "Seed 24680 · 3".into(),
-            recipe: Project::default(),
+            recipe: app.project.clone(),
             state: State::Incomplete,
             detail: report.clone(),
         });
@@ -6259,6 +6278,20 @@ mod tests {
         assert!(copied.platform_output.commands.iter().any(|command| {
             matches!(command, egui::OutputCommand::CopyText(value) if value == &report)
         }));
+        let support = click(position(&render(vec![]), "Copy error message"));
+        let copied = support.platform_output.commands.iter().find_map(|command| {
+            match command {
+                egui::OutputCommand::CopyText(value) => Some(value),
+                _ => None,
+            }
+        }).expect("the error action writes to the clipboard");
+        let (message, code) = copied.split_once("\n\nMapper support code\n").unwrap();
+        assert_eq!(message, report);
+        let decoded = mapper_studio::support_snapshot::Snapshot::decode(code).unwrap();
+        let decoded = serde_json::to_value(decoded).unwrap();
+        assert_eq!(decoded["mapper_version"], "0.1.0-beta.1");
+        assert_eq!(decoded["rust"]["native_sha256"], expected_hash);
+
         click(position(&render(vec![]), "Edit recipe"));
         assert_eq!(action.get(), Some(QueueAction::LoadRecipe(1)));
 

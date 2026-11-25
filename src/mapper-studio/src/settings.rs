@@ -9,6 +9,7 @@ pub(super) enum Page {
     Viewport,
     Icons,
     Updates,
+    Support,
 }
 impl Studio {
     pub(super) fn open_installation_settings(&mut self) {
@@ -51,6 +52,7 @@ impl Studio {
                 }
                 let message = self.source.setup_message();
                 if !message.is_empty() { ui.label(message); }
+                self.source.copy_inspection_error(ui);
                 ui.add_space(12.);
                 if ui.button("Set up later").clicked() {
                     self.installation_setup_open = false;
@@ -200,6 +202,7 @@ impl Studio {
             (Page::Viewport, "Viewport", Icon::Viewport),
             (Page::Icons, "Monument icons", Icon::Monument),
             (Page::Updates, "Updates", Icon::Updates),
+            (Page::Support, "Support", Icon::Rules),
         ];
         let (page, closed) = settings_dialog::show(
             ctx, "mapper-settings", "Settings", pages, self.settings_page, |ui, page| {
@@ -210,7 +213,10 @@ impl Studio {
                 if !self.settings_message.is_empty() {
                     let label = egui::RichText::new("Settings error")
                         .color(ui.visuals().error_fg_color);
-                    ui.menu_button(label, |ui| diagnostic_ui::details(ui, &self.settings_message));
+                    ui.menu_button(label, |ui| {
+                        diagnostic_ui::copy_error(ui, &self.settings_message, None);
+                        diagnostic_ui::details(ui, &self.settings_message);
+                    });
                 }
                 match page {
                     Page::Installations => self.installation_settings(ui),
@@ -224,6 +230,13 @@ impl Studio {
                             self.settings_path.as_deref(),
                         ) {
                             self.save_preferences();
+                        }
+                    }
+                    Page::Support => {
+                        let snapshot = self.support_environment().snapshot(None);
+                        match (serde_json::to_string_pretty(&snapshot), snapshot.encode()) {
+                            (Ok(preview), Ok(code)) => diagnostic_ui::support_controls(ui, &preview, &code),
+                            _ => { ui.label("Could not create the support snapshot."); }
                         }
                     }
                     Page::Updates => {

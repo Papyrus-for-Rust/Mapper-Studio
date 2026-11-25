@@ -133,6 +133,7 @@ pub(super) struct Panel {
     ready: Option<(BuildKey, Result<Arc<Archive>, String>)>,
     export: Option<Export>,
     message: String,
+    message_is_error: bool,
     exported: Option<export_panel::ExportedFile>,
 }
 impl Panel {
@@ -271,11 +272,13 @@ impl Panel {
             repaint.request_repaint();
         }) {
             self.message = format!("Could not start map export. {error}");
+            self.message_is_error = true;
             ctx.request_repaint();
             return;
         }
         self.export = Some(Export { signal, receiver, path });
         self.message = "Exporting map…".into();
+        self.message_is_error = false;
         ctx.request_repaint();
     }
 
@@ -291,6 +294,8 @@ impl Panel {
         let export = self.export.take().unwrap();
         let completed = matches!(outcome, Ok(Ok(ExportOutcome::Published { .. })))
             .then(|| export.path.clone());
+        self.message_is_error = matches!(outcome,
+            Ok(Err(_)) | Err(TryRecvError::Disconnected) | Ok(Ok(ExportOutcome::Published { webhook_error: Some(_) })));
         self.message = match outcome {
             Ok(Ok(ExportOutcome::Published { webhook_error: None })) => "Map exported".into(),
             Ok(Ok(ExportOutcome::Published { webhook_error: Some(error) })) => format!("Map exported. {error}"),
@@ -324,6 +329,9 @@ impl Panel {
         if !message.is_empty() {
             ui.add(egui::Label::new(egui::RichText::new(message).small()).truncate())
                 .on_hover_text(message);
+        }
+        if self.message_is_error {
+            crate::diagnostic_ui::copy_error(ui, &self.message, None);
         }
         if let Some(exported) = &mut self.exported {
             exported.show(ui);

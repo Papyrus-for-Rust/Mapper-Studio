@@ -2340,6 +2340,7 @@ impl eframe::App for Studio {
         self.poll_project_io(&ctx);
         let pristine = self.pristine_new_project();
         self.tick_preferences(&ctx);
+        diagnostic_ui::set_support_environment(&ctx, self.support_environment());
         self.poll(&ctx);
         self.poll_placement(&ctx);
         self.content.poll();
@@ -2620,7 +2621,10 @@ impl eframe::App for Studio {
             egui::Modal::new(egui::Id::new("unsaved-project")).show(&ctx, |ui| {
                 ui.heading("Unsaved project changes");
                 ui.label("Save this project before continuing?");
-                if let Some(error)=self.project_io.issue() {diagnostic_ui::message(ui,error,"project-io-error");}
+                if let Some(error) = self.project_io.issue() {
+                    diagnostic_ui::message(ui, error, "project-io-error");
+                    diagnostic_ui::copy_error(ui, error, None);
+                }
                 ui.horizontal(|ui| {
                     if ui.button("Save and continue").clicked() {self.save(false,&ctx);}
                     if ui.button("Discard changes").clicked()
@@ -5022,6 +5026,7 @@ mod tests {
                 (settings::Page::Viewport, "Map grid", false),
                 (settings::Page::Icons, "Restore all", false),
                 (settings::Page::Updates, "Check for updates on launch", false),
+                (settings::Page::Support, "Copy support code", false),
                 (settings::Page::Performance, "CPU workers", true),
             ] {
                 app.settings_page = page;
