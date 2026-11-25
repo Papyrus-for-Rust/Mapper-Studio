@@ -13,7 +13,7 @@ use std::{
     borrow::Cow,
     collections::BTreeSet,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock},
 };
 
 struct Cached {
@@ -30,7 +30,9 @@ impl Cached {
                 .is_some_and(|saved| Arc::ptr_eq(saved, base) || saved == base)
     }
 }
-static CACHE: Mutex<Option<Cached>> = Mutex::new(None);
+mod variants;
+
+static VARIANTS: LazyLock<variants::Variants> = LazyLock::new(variants::Variants::default);
 
 #[derive(serde::Serialize)]
 struct EarlyRoadInputs<'a> {
@@ -119,7 +121,7 @@ pub(crate) fn prepare<'a>(
     if cancelled() {
         return Ok(None);
     }
-    let mut timing = crate::composition::StageTimer::start("terrain_preparation");
+    let timing = crate::composition::StageTimer::start("terrain_preparation");
     let progress = crate::loading_progress::begin("Preparing terrain", None);
     let reporter = progress.reporter();
     let resources = generation_resources::current();
@@ -187,31 +189,65 @@ pub(crate) fn prepare<'a>(
     if cancelled() {
         return Ok(None);
     }
-    // Batches normally share the immutable base allocation. A reload can
-    // still reuse the variant after an exact comparison of the base layers.
-    let hit = {
-        let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(cached) = cache.as_ref().filter(|cached| cached.matches(variant_key, base)) {
-            Some(cached.source.clone())
-        } else {
-            cache.take();
-            None
+    // Check the recipe and its catalog pins before either kind of reuse.
+    project.validate()?;
+    project.check_monument_assets(&catalog.sha256, &bindings.sha256)?;
+    let timing_enabled = std::env::var_os("MAPPER_COMPOSITION_TIMINGS").is_some();
+    let result = match VARIANTS.request(variant_key, base) {
+        variants::Request::Cached(source) => {
+            if timing_enabled {
+                eprintln!("Terrain variant cache hit");
+            }
+            Ok(Some(source))
+        }
+        variants::Request::Wait(waiter) => {
+            reporter.stage("Waiting for shared terrain");
+            if timing_enabled {
+                eprintln!("Joined in-flight terrain variant");
+            }
+            waiter.wait(cancelled)
+        }
+        variants::Request::Build(builder) => {
+            if timing_enabled {
+                eprintln!("Terrain variant cache miss");
+            }
+            let result = build_variant(
+                BuildInputs { source, project, catalog, bindings, worker, erosion: &erosion, resources },
+                timing,
+                &reporter,
+                &|| builder.should_cancel(cancelled()),
+            );
+            builder.finish(&result);
+            result
         }
     };
-    if let Some(source) = hit {
-        // A hit skips early placement, which otherwise validates the recipe.
-        project.validate()?;
-        if cancelled() {
-            return Ok(None);
-        }
-        if std::env::var_os("MAPPER_COMPOSITION_TIMINGS").is_some() {
-            eprintln!("Terrain variant cache hit");
-        }
-        return Ok(Some(Cow::Owned(source)));
+    if cancelled() {
+        Ok(None)
+    } else {
+        result.map(|source| source.map(Cow::Owned))
     }
-    if std::env::var_os("MAPPER_COMPOSITION_TIMINGS").is_some() {
-        eprintln!("Terrain variant cache miss");
-    }
+}
+
+struct BuildInputs<'a> {
+    source: &'a Source,
+    project: &'a Project,
+    catalog: &'a Catalog,
+    bindings: &'a Bindings,
+    worker: Option<&'a Path>,
+    erosion: &'a erosion_source::Source,
+    resources: generation_resources::Limits,
+}
+
+fn build_variant(
+    inputs: BuildInputs<'_>,
+    mut timing: Option<crate::composition::StageTimer>,
+    reporter: &crate::loading_progress::Reporter,
+    cancelled: &(impl Fn() -> bool + Sync),
+) -> Result<Option<Source>, String> {
+    let BuildInputs { source, project, catalog, bindings, worker, erosion, resources } = inputs;
+    let base = source.native_base_arc()?;
+    let root = bindings.installation_root();
+    let terrain_memory_mib = resources.terrain_memory_mib;
     if project.gpu_erosion.is_some()
         && let Err(error) = crate::erosion_compute::check_buffer_allowance(
             base.height_resolution,
@@ -228,7 +264,7 @@ pub(crate) fn prepare<'a>(
         base,
         catalog,
         bindings,
-        &erosion,
+        erosion,
         cancelled,
         |done, total| reporter.update("", done as u64, Some(total as u64), crate::loading_progress::Unit::Items),
     )?
@@ -244,7 +280,7 @@ pub(crate) fn prepare<'a>(
         let maximum_bytes = (terrain_memory_mib * 1024 * 1024).checked_sub(retained)
             .ok_or("Terrain processing exceeds its memory allowance. Increase Terrain memory in Settings.")?;
         let Some(eroded) = crate::terrain_cache::erosion::prepare(
-            &erosion,
+            erosion,
             &early.layers,
             erosion_pipeline::Limits {
                 maximum_bytes,
@@ -362,11 +398,7 @@ pub(crate) fn prepare<'a>(
     if cancelled() {
         return Ok(None);
     }
-    *CACHE.lock().unwrap_or_else(|e| e.into_inner()) = Some(Cached {
-        key: variant_key,
-        source: prepared.clone(),
-    });
-    Ok(Some(Cow::Owned(prepared)))
+    Ok(Some(prepared))
 }
 
 pub(crate) fn solve(
