@@ -1519,11 +1519,18 @@ impl Studio {
     }
 
     pub(super) fn generation_status(&mut self, ui: &mut egui::Ui) {
+        let readiness = self.generation_readiness();
+        let preparing = self.source.inspection_token().is_some() || self.prefabs.preparation_token().is_some();
+        if !self.generation_in_progress() && !preparing
+            && matches!(readiness, Ok(()) | Err(GenerationBlocker::MissingSeed))
+        {
+            return;
+        }
+
         egui::Panel::bottom("generation-status").exact_size(34.).resizable(false)
             .frame(egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).inner_margin(egui::Margin::symmetric(12, 4)))
             .show(ui, |ui| {
             ui.horizontal(|ui| {
-                let readiness = self.generation_readiness();
                 if matches!(readiness, Err(GenerationBlocker::CheckingOverlays)) {
                     ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
                 }
@@ -1593,11 +1600,10 @@ impl Studio {
                     .or_else(|| self.prefabs.preparation_token())
                 {
                     loading_ui::show(ui, loading_ui::Status::Preparing(token));
-                } else if !overlay_blocked {
-                    loading_ui::show(ui, match &readiness {
-                        Ok(()) => loading_ui::Status::Ready,
-                        Err(error) => loading_ui::Status::Blocked(error.message()),
-                    });
+                } else if !overlay_blocked && let Err(error) = &readiness
+                    && !matches!(error, GenerationBlocker::MissingSeed)
+                {
+                    loading_ui::show(ui, loading_ui::Status::Blocked(error.message()));
                 }
             });
         });
@@ -1631,14 +1637,25 @@ impl Studio {
             ui.spacing_mut().item_spacing.x = 0.;
             let batch_width = 34_f32.min(width * 0.35);
             let background = ui.painter().add(egui::Shape::Noop);
-            let generate = ui.add_enabled(
-                can_press,
-                egui::Button::new(egui::RichText::new(label).strong().color(Color32::WHITE))
-                    .min_size(egui::vec2(width - batch_width, HEIGHT))
-                    .truncate()
-                    .frame(!enabled)
-                    .corner_radius(left),
-            );
+            let muted_light = !enabled && !ui.visuals().dark_mode;
+            let label_color = if muted_light {
+                ui.visuals().weak_text_color()
+            } else {
+                Color32::WHITE
+            };
+            let main_button = egui::Button::new(egui::RichText::new(label).strong().color(label_color))
+                .min_size(egui::vec2(width - batch_width, HEIGHT))
+                .truncate()
+                .frame(!enabled)
+                .corner_radius(left);
+            let generate = if muted_light {
+                ui.scope(|ui| {
+                    ui.visuals_mut().disabled_alpha = 1.;
+                    ui.add_enabled(can_press, main_button)
+                }).inner
+            } else {
+                ui.add_enabled(can_press, main_button)
+            };
             let batch = ui.add_enabled(
                 batch_enabled,
                 egui::Button::new("")
@@ -7290,6 +7307,9 @@ mod tests {
         }, &ctx);
         assert_eq!(app.generation.queue.len(), MAX_BATCH);
         assert_eq!(app.generation_readiness(), Err(GenerationBlocker::QueueFull));
+        let active = render(&mut app, vec![]);
+        let generate = text_rect(&active, "Queue map").unwrap().center();
+        let dropdown = egui::pos2(dropdown.x, generate.y);
         assert!(text_rect(&click(&mut app, generate), "Queue full").is_some());
         assert_eq!(app.generation.queue.len(), MAX_BATCH);
 
@@ -7376,7 +7396,35 @@ mod tests {
     }
 
     #[test]
-    fn bottom_actions_keep_the_canvas_stable_and_open_matching_installation_settings() {
+    fn disabled_generate_keeps_readable_text_in_light_mode() {
+        let ctx = egui::Context::default();
+        workbench_style::install(&ctx);
+        ctx.set_theme(egui::Theme::Light);
+        let mut app = super::super::tests::fixture(&ctx);
+        let mut frame = ctx.run_ui(egui::RawInput::default(), |ui| {
+            app.generate_split_button(ui, 260., false, Some(&GenerationBlocker::AssetsUnavailable));
+        });
+
+        frame.textures_delta.clear();
+        let text = frame.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.job.text == "Generate" => Some(text),
+            _ => None,
+        }).expect("disabled Generate label is painted");
+        let colors = &ctx.style_of(egui::Theme::Light).visuals;
+        let glyph = text.override_text_color.unwrap_or(text.galley.job.sections[0].format.color);
+        assert_eq!(glyph, colors.weak_text_color());
+        assert_eq!(text.opacity_factor, 1.);
+        let luminance = |color: Color32| {
+            let [r, g, b, _] = egui::Rgba::from(color).to_array();
+            0.2126 * r + 0.7152 * g + 0.0722 * b
+        };
+        let contrast = (luminance(colors.widgets.noninteractive.weak_bg_fill) + 0.05)
+            / (luminance(glyph) + 0.05);
+        assert!(contrast >= 4.5, "Generate label contrast was {contrast:.2}:1");
+    }
+
+    #[test]
+    fn idle_workspace_hides_the_footer_and_active_recovery_stays_available() {
         let _background = mapper_studio::loading_progress::begin("Terrain colors", None);
         for dark in [false, true] {
             let ctx = egui::Context::default();
@@ -7389,7 +7437,9 @@ mod tests {
             let mut app = super::super::tests::fixture(&ctx);
             let mut rects = Vec::new();
             let mut textures = snapshot::Textures::default();
-            for state in ["idle", "busy", "full", "blocked", "assets"] {
+            let seed = app.project.master_seed;
+            for state in ["idle", "missing-seed", "busy", "full", "blocked", "assets"] {
+                app.project.master_seed = if state == "missing-seed" { 0 } else { seed };
                 if matches!(state, "busy" | "full") {
                     let total = if state == "full" { MAX_BATCH } else { 2 };
                     app.generation.queue = (0..total)
@@ -7442,6 +7492,9 @@ mod tests {
                         });
                     },
                 );
+                assert!(!output.shapes.iter().any(
+                    |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.job.text == "Ready")
+                ));
                 let action = if app.generation.busy() { "Queue map" } else { "Generate" };
                 assert!(output.shapes.iter().any(
                     |s| matches!(&s.shape,egui::Shape::Text(t) if t.galley.job.text == action)
@@ -7511,7 +7564,9 @@ mod tests {
                     assert_eq!(app.project, recipe);
                 }
             }
-            assert!(rects.iter().all(|rect| *rect == rects[0]));
+            assert_eq!(rects[0], rects[1], "An unset seed should also leave the idle workspace clear");
+            assert!(rects[0].bottom() > rects[2].bottom() + 30., "Idle content should reclaim the footer");
+            assert!(rects[2..].iter().all(|rect| *rect == rects[2]));
         }
     }
 }

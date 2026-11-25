@@ -23,6 +23,8 @@ pub(super) enum Icon {
     Appearance,
     Viewport,
     Updates,
+    Refresh,
+    Magnet,
     Close,
 }
 
@@ -306,6 +308,8 @@ impl Icon {
                 Self::Appearance => asset!("theme-light-dark"),
                 Self::Viewport => asset!("eye-outline"),
                 Self::Updates => asset!("update"),
+                Self::Refresh => asset!("refresh"),
+                Self::Magnet => asset!("magnet"),
                 Self::Close => asset!("close"),
             };
             let pixels = mask
