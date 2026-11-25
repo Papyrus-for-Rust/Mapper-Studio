@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "output": 140,
+  "nodes": [
+    { "id": 10, "op": { "kind": "native_height" } },
+    { "id": 20, "op": { "kind": "ellipse", "center": [500, -330], "radii": [545, 430], "rotation": -18, "feather": 0.4 } },
+    { "id": 30, "op": { "kind": "ellipse", "center": [500, -330], "radii": [300, 232], "rotation": -18, "feather": 0.5 } },
+    { "id": 40, "op": { "kind": "combine", "left": 20, "right": 30, "mode": "subtract" } },
+    { "id": 50, "op": { "kind": "noise", "mode": "billow", "wavelength": 290, "octaves": 3, "persistence": 0.55, "seed": 2769 } },
+    { "id": 60, "op": { "kind": "remap", "input": 50, "low": 0.12, "high": 0.85 } },
+    { "id": 70, "op": { "kind": "combine", "left": 60, "right": 40, "mode": "multiply" } },
+    { "id": 80, "op": { "kind": "raise", "height": 10, "mask": 40, "metres": 72 } },
+    { "id": 90, "op": { "kind": "raise", "height": 80, "mask": 70, "metres": 35 } },
+    { "id": 100, "op": { "kind": "terrace", "height": 90, "step": 18, "softness": 0.32 } },
+    { "id": 110, "op": { "kind": "blend", "low": 90, "high": 100, "mask": 40 } },
+    { "id": 140, "op": { "kind": "raise", "height": 110, "mask": 30, "metres": -135 } }
+  ]
+}

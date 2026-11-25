@@ -1,0 +1,26 @@
+{
+  "format": "papyrus-monument-profile",
+  "schema": 2,
+  "id": "client-8dd4e235-monument-checks-1",
+  "native_sha256": "8dd4e23570729ddbd72844bdb8a5e04bfa671612b3e7d34841d17d2353f7015c",
+  "scene_sha256": "9cd3636e7dfd5a8ac586f879f8d4421b87fb172fc03e5a77ac5baa028b4abb3d",
+  "reference_assembly_sha256": "132ce1c78406769107323c6b1f679beafbf901b14ea219dfe4555d29197b4161",
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "bytes": 270636368,
+      "sha256": "199a470f2510320be42d127cc55e946f51a2fc0b0b3ed0bf8671c2a8bb73b252"
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 68754532,
+      "sha256": "266b023e647e1fcedd7c4590ea110d5131bbb070bf23f3c42fb33f935cc9750a"
+    }
+  ],
+  "tier_to_topology": {
+    "1": 67108864,
+    "2": 134217728,
+    "4": 268435456
+  },
+  "min_corners": 3
+}

@@ -1,0 +1,119 @@
+{
+  "format": "papyrus-infrastructure-profile",
+  "schema": 1,
+  "id": "client-58f3263f-road-topology-9",
+  "native_sha256": "58f3263fd5cc1ab31942e14b902e52ff952b65fa08896226d15181a01b486750",
+  "scene_sha256": "ea528fd170705a7c583a356200bbe7cb98c3ca152129bdf774dcf3e3a66c93a6",
+  "road_type": 0,
+  "road_topology": 2048,
+  "roadside_topology": 4096,
+  "splat_channel": 7,
+  "protected_topology": 2704514,
+  "width": 10.0,
+  "shoulder": 8.0,
+  "terrain_offset": -0.125,
+  "revision": 9,
+  "topology_flags": {
+    "Field": 1,
+    "Cliff": 2,
+    "Summit": 4,
+    "Beachside": 8,
+    "Beach": 16,
+    "Forest": 32,
+    "Forestside": 64,
+    "Ocean": 128,
+    "Oceanside": 256,
+    "Decor": 512,
+    "Monument": 1024,
+    "Road": 2048,
+    "Roadside": 4096,
+    "Swamp": 8192,
+    "River": 16384,
+    "Riverside": 32768,
+    "Lake": 65536,
+    "Lakeside": 131072,
+    "Offshore": 262144,
+    "Rail": 524288,
+    "Railside": 1048576,
+    "Building": 2097152,
+    "Cliffside": 4194304,
+    "Mountain": 8388608,
+    "Clutter": 16777216,
+    "Alt": 33554432,
+    "Tier0": 67108864,
+    "Tier1": 134217728,
+    "Tier2": 268435456,
+    "Mainland": 536870912,
+    "Hilltop": 1073741824
+  },
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "bytes": 270462288,
+      "sha256": "516653f622c05ed95d6667ebda0f68321f2f10ea755feab929cfb6897d08c1fd"
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 68769640,
+      "sha256": "d3380cd4e62412f01ba99825204bee3f33fa238e4ac0ec4b98c8a1873a133632"
+    }
+  ],
+  "map_scene": {
+    "relative_path": "Bundles/maps/maps.bundle",
+    "bytes": 114241184,
+    "sha256": "76da9ed1fae2d1bdbdceb9c88b59a9a0e1af18d5fc616ea9dba4d21044b58bbd"
+  },
+  "layout_order": [
+    0,
+    2
+  ],
+  "layout_mode": -1,
+  "trails": {
+    "infrastructure_type": 2,
+    "width": 4.0,
+    "shoulder": 8.0,
+    "terrain_offset": -0.125,
+    "splat_channel": 0,
+    "network_sample_stride": 8,
+    "seed_domain": "mapper-trails-1",
+    "hierarchy": 2
+  },
+  "road_hierarchy": 1,
+  "entrances": {
+    "minimum_height": 1.0,
+    "owned_topology": 2098176,
+    "maximum_exit_distance": 512.0,
+    "maximum_exit_nodes": 4096
+  },
+  "shaping": {
+    "horizontal_iterations": 4,
+    "vertical_iterations": 16,
+    "resample_distance": 7.5,
+    "maximum_work": 2000000
+  },
+  "ring": {
+    "minimum_world_size": 4000,
+    "large_world_size": 5000,
+    "inset_divisor": 4,
+    "inward_step_cells": 1,
+    "maximum_attempts": 128,
+    "width": 12.0,
+    "hierarchy": 0,
+    "network_sample_stride": 8
+  },
+  "access_routing": {
+    "traversable_topology": 2,
+    "normal_cost": 101,
+    "traversable_cost": 5000
+  },
+  "post_topology": {
+    "source_mask": 6144,
+    "eligible_mask": 49,
+    "roadside_flag": 4096,
+    "cliff_flag": 2,
+    "radius_cells": 6,
+    "cliff_slope_degrees": 40.0,
+    "normal_sampling": "papyrus-native-terrain-normal-1"
+  },
+  "stage_layout": "mode-description"
+}

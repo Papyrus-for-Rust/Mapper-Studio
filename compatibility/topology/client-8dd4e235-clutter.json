@@ -1,0 +1,29 @@
+{
+  "format": "papyrus-clutter-topology-profile",
+  "schema": 1,
+  "native_sha256": "8dd4e23570729ddbd72844bdb8a5e04bfa671612b3e7d34841d17d2353f7015c",
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "199a470f2510320be42d127cc55e946f51a2fc0b0b3ed0bf8671c2a8bb73b252",
+      "bytes": 270636368
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "266b023e647e1fcedd7c4590ea110d5131bbb070bf23f3c42fb33f935cc9750a",
+      "bytes": 68754532
+    }
+  ],
+  "map_scene": {
+    "relative_path": "Bundles/maps/maps.bundle",
+    "sha256": "8c268626b5e196e473acaaf7ee9c8e2d73e38b658f0d0f0615e91547cd15f6de",
+    "bytes": 114296560
+  },
+  "process_sha256": "d8e83ee29f9600f7e5dc0bd271653199be82ca9581c2f8a34a537b15095f1f2b",
+  "callback_sha256": "fd7c4f26da5b5764a57d5f82332bd4b99a093998411c14725b690ffa07a96e0c",
+  "policy": {
+    "decor_flag": 512,
+    "clutter_flag": 16777216,
+    "radius_cells": 3
+  }
+}

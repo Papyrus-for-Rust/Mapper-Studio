@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "output": 60,
+  "nodes": [
+    { "id": 10, "op": { "kind": "native_height" } },
+    { "id": 20, "op": { "kind": "noise", "mode": "ridged", "wavelength": 500, "octaves": 3, "persistence": 0.5 } },
+    { "id": 30, "op": { "kind": "ellipse", "center": [0, 0], "radii": [450, 350], "rotation": 30, "feather": 0.55 } },
+    { "id": 40, "op": { "kind": "elevation_mask", "height": 10, "low": 16, "high": 40 } },
+    { "id": 45, "op": { "kind": "combine", "left": 20, "right": 30, "mode": "multiply" } },
+    { "id": 50, "op": { "kind": "combine", "left": 45, "right": 40, "mode": "multiply" } },
+    { "id": 60, "op": { "kind": "raise", "height": 10, "mask": 50, "metres": 3 } }
+  ]
+}

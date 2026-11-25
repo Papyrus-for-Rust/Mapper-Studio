@@ -1,0 +1,66 @@
+{
+  "format": "papyrus-jungle-vine-profile",
+  "schema": 1,
+  "id": "client-58f3263f-jungle-vines-1",
+  "native_sha256": "58f3263fd5cc1ab31942e14b902e52ff952b65fa08896226d15181a01b486750",
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "bytes": 270462288,
+      "sha256": "516653f622c05ed95d6667ebda0f68321f2f10ea755feab929cfb6897d08c1fd"
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 68769640,
+      "sha256": "d3380cd4e62412f01ba99825204bee3f33fa238e4ac0ec4b98c8a1873a133632"
+    }
+  ],
+  "process_sha256": "e88626713ca7916f281615c2aad5b12aca538aa5dcbdad6951cc506056b24921",
+  "uniform_process_sha256": "3b9aa333a7237d939efef15a8a93ab8b9413d54de32d57edeb6e5f0883e790c7",
+  "initializer_sha256": "bd60f6819e5e1481f21c1bc5573497ee3938a57b155fc58af1a334ca215d05be",
+  "default_enabled": true,
+  "topology_flags": {
+    "Field": 1,
+    "Cliff": 2,
+    "Summit": 4,
+    "Beachside": 8,
+    "Beach": 16,
+    "Forest": 32,
+    "Forestside": 64,
+    "Ocean": 128,
+    "Oceanside": 256,
+    "Decor": 512,
+    "Monument": 1024,
+    "Road": 2048,
+    "Roadside": 4096,
+    "Swamp": 8192,
+    "River": 16384,
+    "Riverside": 32768,
+    "Lake": 65536,
+    "Lakeside": 131072,
+    "Offshore": 262144,
+    "Rail": 524288,
+    "Railside": 1048576,
+    "Building": 2097152,
+    "Cliffside": 4194304,
+    "Mountain": 8388608,
+    "Clutter": 16777216,
+    "Alt": 33554432,
+    "Tier0": 67108864,
+    "Tier1": 134217728,
+    "Tier2": 268435456,
+    "Mainland": 536870912,
+    "Hilltop": 1073741824
+  },
+  "collider_backfaces": false,
+  "material_removal": {
+    "replacement_channels": [
+      2,
+      4,
+      4,
+      1,
+      0
+    ],
+    "excluded_topology": 8388608
+  }
+}

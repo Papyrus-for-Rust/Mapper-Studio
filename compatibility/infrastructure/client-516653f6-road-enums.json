@@ -1,0 +1,23 @@
+{
+  "format": "papyrus-road-enum-profile",
+  "schema": 1,
+  "id": "client-516653f6-road-enums-1",
+  "metadata_version": 39,
+  "sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "bytes": 270462288,
+      "sha256": "516653f622c05ed95d6667ebda0f68321f2f10ea755feab929cfb6897d08c1fd"
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 68769640,
+      "sha256": "d3380cd4e62412f01ba99825204bee3f33fa238e4ac0ec4b98c8a1873a133632"
+    }
+  ],
+  "reference_sha256": "89978e894bc9e1ec90d217a13dbe49230da54ac73951fbe71b71afdab5928fe2",
+  "roadside": 7,
+  "paved": 0,
+  "trail": 2,
+  "power": 1
+}

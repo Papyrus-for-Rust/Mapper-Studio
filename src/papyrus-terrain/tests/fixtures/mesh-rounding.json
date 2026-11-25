@@ -1,0 +1,245 @@
+{
+  "reference": "System.Math.Round(double,int)-ToEven-f32",
+  "cases": [
+    {
+      "value": -999.99994,
+      "digits": 1,
+      "expected": -1000
+    },
+    {
+      "value": -999.99994,
+      "digits": 4,
+      "expected": -999.9999
+    },
+    {
+      "value": -999.99994,
+      "digits": 6,
+      "expected": -999.99994
+    },
+    {
+      "value": -1.23455,
+      "digits": 1,
+      "expected": -1.2
+    },
+    {
+      "value": -1.23455,
+      "digits": 4,
+      "expected": -1.2345
+    },
+    {
+      "value": -1.23455,
+      "digits": 6,
+      "expected": -1.23455
+    },
+    {
+      "value": -0.00015,
+      "digits": 1,
+      "expected": -0
+    },
+    {
+      "value": -0.00015,
+      "digits": 4,
+      "expected": -0.0002
+    },
+    {
+      "value": -0.00015,
+      "digits": 6,
+      "expected": -0.00015
+    },
+    {
+      "value": -5E-05,
+      "digits": 1,
+      "expected": -0
+    },
+    {
+      "value": -5E-05,
+      "digits": 4,
+      "expected": -0
+    },
+    {
+      "value": -5E-05,
+      "digits": 6,
+      "expected": -5E-05
+    },
+    {
+      "value": -1E-06,
+      "digits": 1,
+      "expected": -0
+    },
+    {
+      "value": -1E-06,
+      "digits": 4,
+      "expected": -0
+    },
+    {
+      "value": -1E-06,
+      "digits": 6,
+      "expected": -1E-06
+    },
+    {
+      "value": -0,
+      "digits": 1,
+      "expected": -0
+    },
+    {
+      "value": -0,
+      "digits": 4,
+      "expected": -0
+    },
+    {
+      "value": -0,
+      "digits": 6,
+      "expected": -0
+    },
+    {
+      "value": 0,
+      "digits": 1,
+      "expected": 0
+    },
+    {
+      "value": 0,
+      "digits": 4,
+      "expected": 0
+    },
+    {
+      "value": 0,
+      "digits": 6,
+      "expected": 0
+    },
+    {
+      "value": 1E-06,
+      "digits": 1,
+      "expected": 0
+    },
+    {
+      "value": 1E-06,
+      "digits": 4,
+      "expected": 0
+    },
+    {
+      "value": 1E-06,
+      "digits": 6,
+      "expected": 1E-06
+    },
+    {
+      "value": 5E-05,
+      "digits": 1,
+      "expected": 0
+    },
+    {
+      "value": 5E-05,
+      "digits": 4,
+      "expected": 0
+    },
+    {
+      "value": 5E-05,
+      "digits": 6,
+      "expected": 5E-05
+    },
+    {
+      "value": 0.00015,
+      "digits": 1,
+      "expected": 0
+    },
+    {
+      "value": 0.00015,
+      "digits": 4,
+      "expected": 0.0002
+    },
+    {
+      "value": 0.00015,
+      "digits": 6,
+      "expected": 0.00015
+    },
+    {
+      "value": 0.125,
+      "digits": 1,
+      "expected": 0.1
+    },
+    {
+      "value": 0.125,
+      "digits": 4,
+      "expected": 0.125
+    },
+    {
+      "value": 0.125,
+      "digits": 6,
+      "expected": 0.125
+    },
+    {
+      "value": 0.375,
+      "digits": 1,
+      "expected": 0.4
+    },
+    {
+      "value": 0.375,
+      "digits": 4,
+      "expected": 0.375
+    },
+    {
+      "value": 0.375,
+      "digits": 6,
+      "expected": 0.375
+    },
+    {
+      "value": 1.23445,
+      "digits": 1,
+      "expected": 1.2
+    },
+    {
+      "value": 1.23445,
+      "digits": 4,
+      "expected": 1.2344
+    },
+    {
+      "value": 1.23445,
+      "digits": 6,
+      "expected": 1.23445
+    },
+    {
+      "value": 1.23455,
+      "digits": 1,
+      "expected": 1.2
+    },
+    {
+      "value": 1.23455,
+      "digits": 4,
+      "expected": 1.2345
+    },
+    {
+      "value": 1.23455,
+      "digits": 6,
+      "expected": 1.23455
+    },
+    {
+      "value": 999.99994,
+      "digits": 1,
+      "expected": 1000
+    },
+    {
+      "value": 999.99994,
+      "digits": 4,
+      "expected": 999.9999
+    },
+    {
+      "value": 999.99994,
+      "digits": 6,
+      "expected": 999.99994
+    },
+    {
+      "value": 1234.5677,
+      "digits": 1,
+      "expected": 1234.6
+    },
+    {
+      "value": 1234.5677,
+      "digits": 4,
+      "expected": 1234.5677
+    },
+    {
+      "value": 1234.5677,
+      "digits": 6,
+      "expected": 1234.5677
+    }
+  ]
+}

@@ -1,0 +1,287 @@
+//! Machine-local preferences; portable recipes retain source fingerprints only.
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Appearance {
+    System,
+    #[default]
+    Dark,
+    Light,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImageResolution {
+    Px1024,
+    #[default]
+    Px2048,
+    Px4096,
+}
+impl ImageResolution {
+    pub const ALL: [Self; 3] = [Self::Px1024, Self::Px2048, Self::Px4096];
+    pub fn pixels(self) -> usize {
+        match self {
+            Self::Px1024 => 1024,
+            Self::Px2048 => 2048,
+            Self::Px4096 => 4096,
+        }
+    }
+    pub fn label(self) -> String {
+        format!("{} × {} px", self.pixels(), self.pixels())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MapSizeSnap {
+    Off,
+    Meters25,
+    #[default]
+    Meters50,
+    Meters100,
+    Meters250,
+}
+impl MapSizeSnap {
+    pub const OPTIONS: [(Self, &'static str); 5] = [
+        (Self::Off, "Off"),
+        (Self::Meters25, "25 m"),
+        (Self::Meters50, "50 m"),
+        (Self::Meters100, "100 m"),
+        (Self::Meters250, "250 m"),
+    ];
+
+    pub fn step(self) -> f64 {
+        match self {
+            Self::Off => 0.,
+            Self::Meters25 => 25.,
+            Self::Meters50 => 50.,
+            Self::Meters100 => 100.,
+            Self::Meters250 => 250.,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Preferences {
+    pub schema: u32,
+    pub rust_folder: Option<PathBuf>,
+    pub installations: Vec<crate::installations::Entry>,
+    pub selected_installation: Option<u64>,
+    pub appearance: Appearance,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub reduce_motion: bool,
+    pub live_generation: bool,
+    pub check_for_updates: bool,
+    pub map_size_snap: MapSizeSnap,
+    #[serde(rename = "random_master_seed", skip_serializing)]
+    #[doc(hidden)]
+    pub _random_master_seed: bool,
+    #[serde(rename = "floating_tools", skip_serializing)]
+    #[doc(hidden)]
+    pub _floating_tools: bool,
+    #[serde(rename = "tools_docked_right", skip_serializing)]
+    #[doc(hidden)]
+    pub _tools_docked_right: bool,
+    #[serde(rename = "tools_single_column", skip_serializing)]
+    #[doc(hidden)]
+    pub _tools_single_column: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub map_grid: bool,
+    pub map_no_build: bool,
+    pub monument_splats: bool,
+    pub monument_icons: crate::monument_icons::Overrides,
+    pub monument_markers: crate::map_labels::Mode,
+    pub decoration_models: bool,
+    pub export_resolution: ImageResolution,
+    pub image_render: crate::image_render::Settings,
+    pub export_folder: Option<PathBuf>,
+    pub map_colors: crate::map_colors::Preferences,
+    pub generation_resources: crate::generation_resources::Limits,
+    pub topology_groups: Vec<crate::topology_presets::Preset>,
+}
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            schema: 1,
+            rust_folder: None,
+            installations: Vec::new(),
+            selected_installation: None,
+            appearance: Appearance::Dark,
+            reduce_motion: false,
+            live_generation: true,
+            check_for_updates: true,
+            map_size_snap: MapSizeSnap::default(),
+            _random_master_seed: false,
+            _floating_tools: false,
+            _tools_docked_right: false,
+            _tools_single_column: false,
+            map_grid: false,
+            map_no_build: false,
+            monument_splats: true,
+            monument_icons: Default::default(),
+            monument_markers: Default::default(),
+            decoration_models: true,
+            export_resolution: Default::default(),
+            image_render: Default::default(),
+            export_folder: None,
+            map_colors: Default::default(),
+            generation_resources: Default::default(),
+            topology_groups: Vec::new(),
+        }
+    }
+}
+impl Preferences {
+    pub fn path() -> Result<PathBuf, String> {
+        let root = std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .ok_or("Local application data folder is unavailable")?;
+        Ok(root.join("Papyrus/Mapper/settings.json"))
+    }
+    pub fn load(path: &Path) -> Result<Self, String> {
+        use std::io::Read;
+        let file = match std::fs::File::open(path) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(e) => return Err(e.to_string()),
+        };
+        let mut bytes = Vec::new();
+        file.take(65537)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        if bytes.len() > 65536 {
+            return Err("Settings exceed 64 KiB".into());
+        }
+        let prefs: Self = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        if prefs.schema != 1 {
+            return Err("Unsupported settings version; existing file retained".into());
+        }
+        crate::installations::validate(&prefs.installations, prefs.selected_installation)?;
+        prefs.generation_resources.validate()?;
+        crate::monument_icons::validate(&prefs.monument_icons)?;
+        crate::topology_presets::validate(&prefs.topology_groups)?;
+        Ok(prefs)
+    }
+    pub fn save(&self, path: &Path) -> Result<(), String> {
+        crate::installations::validate(&self.installations, self.selected_installation)?;
+        self.generation_resources.validate()?;
+        crate::monument_icons::validate(&self.monument_icons)?;
+        crate::topology_presets::validate(&self.topology_groups)?;
+        if serde_json::to_vec(self).map_err(|e| e.to_string())?.len() > 65536 {
+            return Err("Settings exceed 64 KiB".into());
+        }
+        if self.schema != 1 {
+            return Err("Unsupported settings version".into());
+        }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        crate::profile::write_document(path, self, true)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn image_export_preferences_upgrade_old_settings_and_reject_unknown_resolutions() {
+        let old: Preferences = serde_json::from_str(r#"{"schema":1,"rust_folder":null}"#).unwrap();
+        assert_eq!(old.export_resolution, ImageResolution::Px2048);
+        assert_eq!(old.image_render, crate::image_render::Settings::default());
+        assert!(old.export_folder.is_none());
+        assert!(old.decoration_models);
+        assert!(!old.reduce_motion);
+        assert_eq!(old.map_size_snap, MapSizeSnap::Meters50);
+        let settings = Preferences {
+            export_resolution: ImageResolution::Px4096,
+            export_folder: Some(PathBuf::from("C:/Maps/exports")),
+            ..Default::default()
+        };
+        let bytes = serde_json::to_vec(&settings).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Preferences>(&bytes).unwrap(),
+            settings
+        );
+        assert!(
+            serde_json::from_str::<Preferences>(r#"{"schema":1,"export_resolution":"px8192"}"#)
+                .is_err()
+        );
+    }
+    #[test]
+    fn image_render_settings_survive_restart_and_viewport_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        for markers in crate::image_render::Markers::ALL {
+            let mut prefs = Preferences {
+                image_render: crate::image_render::Settings {
+                    terrain: false,
+                    markers,
+                    no_build: true,
+                    grid: true,
+                    monument_data: false,
+                },
+                export_resolution: ImageResolution::Px4096,
+                export_folder: Some(dir.path().join("exports")),
+                ..Default::default()
+            };
+            prefs.save(&path).unwrap();
+            let reopened = Preferences::load(&path).unwrap();
+            assert_eq!(reopened, prefs);
+
+            prefs = reopened;
+            prefs.map_grid = true;
+            prefs.map_no_build = true;
+            prefs.monument_markers = crate::map_labels::Mode::Text;
+            prefs.save(&path).unwrap();
+            let reopened = Preferences::load(&path).unwrap();
+            assert_eq!(reopened.image_render, prefs.image_render);
+            assert_eq!(reopened.export_resolution, ImageResolution::Px4096);
+            assert_eq!(reopened.export_folder, prefs.export_folder);
+        }
+    }
+    #[test]
+    fn preferences_roundtrip_preserves_folder_and_rejects_future_or_oversized_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested/settings.json");
+        assert_eq!(Preferences::load(&path).unwrap(), Preferences::default());
+        let p = Preferences {
+            rust_folder: Some(PathBuf::from("C:/Games/Rust old")),
+            appearance: Appearance::Light,
+            reduce_motion: true,
+            live_generation: false,
+            map_grid: true,
+            monument_splats: false,
+            decoration_models: false,
+            ..Default::default()
+        };
+        p.save(&path).unwrap();
+        assert_eq!(Preferences::load(&path).unwrap(), p);
+        let bytes = std::fs::read(&path).unwrap();
+        let mut invalid = p;
+        invalid.schema = 2;
+        assert!(invalid.save(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        std::fs::write(&path, br#"{"schema":2}"#).unwrap();
+        assert!(Preferences::load(&path).is_err());
+        std::fs::write(&path, vec![b' '; 65537]).unwrap();
+        assert!(Preferences::load(&path).is_err());
+    }
+
+    #[test]
+    fn topology_groups_persist_and_invalid_updates_preserve_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut prefs = Preferences::default();
+        prefs.topology_groups.push(crate::topology_presets::Preset {
+            name: "Spawn area".into(),
+            layers: vec!["Field".into(), "PlayerSpawn".into()],
+        });
+        prefs.save(&path).unwrap();
+        assert_eq!(Preferences::load(&path).unwrap(), prefs);
+        let before = std::fs::read(&path).unwrap();
+        prefs.topology_groups[0].layers.clear();
+        assert!(prefs.save(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let legacy: Preferences = serde_json::from_str("{\"schema\":1}").unwrap();
+        assert!(legacy.topology_groups.is_empty());
+    }
+}

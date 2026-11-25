@@ -1,0 +1,23 @@
+[package]
+name = "papyrus-terrain"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+description = "Independent deterministic terrain and biome generation for Mapper for Rust"
+
+[features]
+road-diagnostics = []
+
+[dependencies]
+bytemuck = "1"
+serde = { version = "1", features = ["derive"] }
+lz4_flex = { version = "0.14.0", default-features = false, features = ["std", "safe-encode", "safe-decode"] }
+md-5 = "0.11.0"
+sha2 = "0.10"
+rayon = "1.12"
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+unicode-general-category = "1.1.0"
+parry3d-f64 = { version = "=0.31.1", default-features = false, features = ["required-features", "std", "alloc", "enhanced-determinism"] }
+
+[lints.rust]
+unsafe_code = "forbid"

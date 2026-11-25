@@ -1,0 +1,200 @@
+{
+  "format": "papyrus-installation-erosion-profile",
+  "schema": 1,
+  "native_sha256": "58f3263fd5cc1ab31942e14b902e52ff952b65fa08896226d15181a01b486750",
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "bytes": 270462288,
+      "sha256": "516653f622c05ed95d6667ebda0f68321f2f10ea755feab929cfb6897d08c1fd"
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 68769640,
+      "sha256": "d3380cd4e62412f01ba99825204bee3f33fa238e4ac0ec4b98c8a1873a133632"
+    }
+  ],
+  "map_scene": {
+    "relative_path": "Bundles/maps/maps.bundle",
+    "bytes": 114241184,
+    "sha256": "76da9ed1fae2d1bdbdceb9c88b59a9a0e1af18d5fc616ea9dba4d21044b58bbd"
+  },
+  "realm_mask": 1,
+  "erosion": {
+    "object_id": 611,
+    "order": 10
+  },
+  "materials": {
+    "object_id": 653,
+    "order": 72
+  },
+  "river": {
+    "object_id": 576,
+    "order": 11
+  },
+  "code_windows": [
+    {
+      "owner": "GenerateErosion",
+      "address": 6463280624,
+      "bytes": 9504,
+      "sha256": "91da35abd2bc20d1931adf672fdc7c89ae6d9243c4fa456a9e7fc2db0f6c4f1f"
+    },
+    {
+      "owner": "GenerateErosion",
+      "address": 6463332272,
+      "bytes": 48,
+      "sha256": "0c2ca17faee535b411d341957993b35a3a24aea4de26723ddcf7a35f39aeb6b1"
+    },
+    {
+      "owner": "GenerateErosionJobs.PrepareMapJob",
+      "address": 6477830368,
+      "bytes": 368,
+      "sha256": "f48a52a30640c1a0e2b162dfa5090bd68520f883dd5baf86162c5fe30befab7d"
+    },
+    {
+      "owner": "GenerateErosionJobs.ErosionAndDepositionJob",
+      "address": 6490993840,
+      "bytes": 656,
+      "sha256": "ef1ba76bf2a09cad503fbbfa2d895321120247317830616801207afa7f3967cb"
+    },
+    {
+      "owner": "GenerateErosionJobs.ErosionAndDepositionJob",
+      "address": 6490994496,
+      "bytes": 4352,
+      "sha256": "5d814f78209d7eec7706ebb8e236e098eae672381e8e2aed49564b601e1da419"
+    },
+    {
+      "owner": "GenerateErosionJobs.PaintSplatJob",
+      "address": 6491379696,
+      "bytes": 48,
+      "sha256": "f64c19a9953c3328db6a45ba384067e724a0803a0da9d42d0de3c829e22cfa72"
+    },
+    {
+      "owner": "GenerateErosionSplat",
+      "address": 6496774640,
+      "bytes": 2560,
+      "sha256": "ac5ae804a07888d7f5ca9aa6fed6ca214f2b076b9766db85dcb6ccf0414cb581"
+    },
+    {
+      "owner": "GenerateErosionSplat",
+      "address": 6496782544,
+      "bytes": 160,
+      "sha256": "40973c3bc00b46b981c8e805f11bf630fa766815aafff052735b59421a98d663"
+    },
+    {
+      "owner": "GenerateErosionJobs.RefillOceanJob",
+      "address": 6507604992,
+      "bytes": 128,
+      "sha256": "2fa60869b93558e1b3929e34e9fcca2f505f385fde6f6c13ec2f689d94ba9909"
+    },
+    {
+      "owner": "GenerateErosionJobs.CalcMinHeightMapJob",
+      "address": 6512093392,
+      "bytes": 592,
+      "sha256": "cd302e1d55d5168343f8dbf796c74aea5edc41e297ce31c71c2b5f8cf4e18885"
+    },
+    {
+      "owner": "GenerateErosionJobs.AdjustWaterHeightByFluxJob",
+      "address": 6517653296,
+      "bytes": 2928,
+      "sha256": "7a95885a33c169d3296135f7ecbbfeba1f9093c4d987a83000883214cb78450d"
+    },
+    {
+      "owner": "GenerateErosionJobs.TransportSedimentJob",
+      "address": 6529830416,
+      "bytes": 288,
+      "sha256": "5bef54009bedba9daa10e0934cd41a9e35946ab22b0abcaccd2fed7d80ebbe66"
+    },
+    {
+      "owner": "GenerateErosionJobs.CopyBackFloatHeightToShortHeightJob",
+      "address": 6530026928,
+      "bytes": 128,
+      "sha256": "b8442ac2a6684e4a97c000ca1107e7d0c98a161853aa95df7a55e89fae27c556"
+    },
+    {
+      "owner": "GenerateErosionJobs.CalculateOutputFluxJob",
+      "address": 6530647456,
+      "bytes": 5136,
+      "sha256": "1afb663a73f8d089c0f217acbe1b87fc9b23dd8457fdf546969c0076e41cb6cc"
+    },
+    {
+      "owner": "GenerateErosionJobs.PopulateDeltaHeightJob",
+      "address": 6536854208,
+      "bytes": 128,
+      "sha256": "90253b4da9f5f4125c990b048aada2d2fb31c6b0998255f45a78904777d5d8c5"
+    },
+    {
+      "owner": "GenerateErosionJobs.PaintSplatJob",
+      "address": 6542473360,
+      "bytes": 688,
+      "sha256": "3ac5bb56182e9826a590676e2c49c625e29315f64a2de80dabdae822917ed84e"
+    },
+    {
+      "owner": "GenerateErosionJobs.PaintSplatJob",
+      "address": 6542474048,
+      "bytes": 1248,
+      "sha256": "a251f8527b649c82a5bddb2e89a65f8da704d6ebdcffb613284296180226a6ca"
+    },
+    {
+      "owner": "GenerateErosionJobs.PaintSplatJob",
+      "address": 6542475296,
+      "bytes": 272,
+      "sha256": "7b1dbd5eaf6df6c6708b30b237809f6cc8051628467ff2048ad57905ceba4db6"
+    },
+    {
+      "owner": "GenerateErosionJobs.PaintSplatJob",
+      "address": 6542475568,
+      "bytes": 1120,
+      "sha256": "5c354e77ffa49c610f03cd457d58b44d3c26b8e791f8e65fdea1c377b315bda6"
+    },
+    {
+      "owner": "GenerateErosionJobs.PaintSplatJob",
+      "address": 6542476688,
+      "bytes": 640,
+      "sha256": "2ec944248027556232772821058ce1234c7b72499edda50e28e2dcc2ef21b5a5"
+    }
+  ],
+  "coefficients": {
+    "iterations": 512,
+    "time_step": 0.06,
+    "water_fill_rate": 0.04,
+    "evaporation_rate": 0.015,
+    "gravity": 10.0,
+    "pipe_area": 1.0,
+    "pipe_length": 1.0,
+    "minimum_angle": 0.01047198,
+    "sediment_capacity": 0.0015,
+    "dissolve_rate": 0.15,
+    "depth_fade": 10.0
+  },
+  "bounds": {
+    "protected_topology": 82048,
+    "nearby_topology": 246168,
+    "maximum_radius": 8.0,
+    "radius_step": 0.25,
+    "maximum_cut": 1.0
+  },
+  "paint": {
+    "protected_topology": 739728,
+    "nearby_topology": 2,
+    "nearby_radius": 8.0,
+    "minimum_slope": 3.0,
+    "minimum_curvature": 3.5762787e-07,
+    "curvature_scale": 3.0,
+    "material_threshold": 0.25,
+    "channels": [
+      1,
+      2,
+      0,
+      6,
+      7
+    ],
+    "soil_power": 4.0,
+    "stone_power": 0.8,
+    "snow_gravel_power": 1.5,
+    "ground_gravel_power": 1.4,
+    "gradient_power": 2.0,
+    "soil_gradient_power": 1.5
+  },
+  "activation": "hierarchy"
+}

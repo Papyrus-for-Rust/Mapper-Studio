@@ -1,0 +1,33 @@
+{
+  "format": "papyrus-monument-water-hook-profile",
+  "schema": 1,
+  "native_sha256": "58f3263fd5cc1ab31942e14b902e52ff952b65fa08896226d15181a01b486750",
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "bytes": 270462288,
+      "sha256": "516653f622c05ed95d6667ebda0f68321f2f10ea755feab929cfb6897d08c1fd"
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 68769640,
+      "sha256": "d3380cd4e62412f01ba99825204bee3f33fa238e4ac0ec4b98c8a1873a133632"
+    }
+  ],
+  "behavior": "no_op",
+  "flag_offset": 294,
+  "texture_offset": 360,
+  "slot": 64,
+  "vtable_base": 312,
+  "slot_offset": 1336,
+  "dispatcher": {
+    "address": 6463248688,
+    "bytes": 1152,
+    "sha256": "c2100297a37dac18ad2a5b1624c9886696abbd39ad0cd89bf91496a0f956b79d"
+  },
+  "implementation": {
+    "address": 6451235808,
+    "bytes": 16,
+    "sha256": "28f844b5972c241e804231b0e41b93e13696e59b98dde74f19029386db5da0c5"
+  }
+}

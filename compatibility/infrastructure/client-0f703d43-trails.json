@@ -1,0 +1,82 @@
+{
+  "format": "papyrus-infrastructure-profile",
+  "schema": 1,
+  "id": "client-0f703d43-roads-trails-3",
+  "native_sha256": "0f703d43b57672b8bb3dfd29bab0d484f8622fbac66dee7f1f058893ef22a99c",
+  "scene_sha256": "dfed19615a919bc4f58e8675e632a172f5f1488ddf7cb60a49601081c3b6eeb4",
+  "road_type": 0,
+  "road_topology": 2048,
+  "roadside_topology": 4096,
+  "splat_channel": 7,
+  "protected_topology": 2704514,
+  "width": 10.0,
+  "shoulder": 8.0,
+  "terrain_offset": -0.125,
+  "revision": 3,
+  "topology_flags": {
+    "Field": 1,
+    "Cliff": 2,
+    "Summit": 4,
+    "Beachside": 8,
+    "Beach": 16,
+    "Forest": 32,
+    "Forestside": 64,
+    "Ocean": 128,
+    "Oceanside": 256,
+    "Decor": 512,
+    "Monument": 1024,
+    "Road": 2048,
+    "Roadside": 4096,
+    "Swamp": 8192,
+    "River": 16384,
+    "Riverside": 32768,
+    "Lake": 65536,
+    "Lakeside": 131072,
+    "Offshore": 262144,
+    "Rail": 524288,
+    "Railside": 1048576,
+    "Building": 2097152,
+    "Cliffside": 4194304,
+    "Mountain": 8388608,
+    "Clutter": 16777216,
+    "Alt": 33554432,
+    "Tier0": 67108864,
+    "Tier1": 134217728,
+    "Tier2": 268435456,
+    "Mainland": 536870912,
+    "Hilltop": 1073741824
+  },
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+      "bytes": 304039424
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+      "bytes": 68271512
+    }
+  ],
+  "map_scene": {
+    "relative_path": "Bundles/maps/maps.bundle",
+    "sha256": "50d7c807360ad98b18b91588aafbec2a9d5bc7c2102cc90d4b250a63dc209a63",
+    "bytes": 114140208
+  },
+  "layout_order": [
+    0,
+    2
+  ],
+  "layout_mode": -1,
+  "trails": {
+    "infrastructure_type": 2,
+    "width": 4.0,
+    "shoulder": 8.0,
+    "terrain_offset": -0.125,
+    "splat_channel": 0,
+    "network_sample_stride": 8,
+    "seed_domain": "mapper-trails-1",
+    "hierarchy": 2
+  },
+  "road_hierarchy": 1
+}

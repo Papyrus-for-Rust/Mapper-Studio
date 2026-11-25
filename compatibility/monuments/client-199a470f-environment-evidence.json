@@ -1,0 +1,152 @@
+{
+  "format": "papyrus-client-environment-static-evidence",
+  "schema": 1,
+  "profile": "client-199a470f-environment-1",
+  "profile_file_sha256": "bd04e246011e75dec43a0986fd781b109435771dc684806c9b916e88cb17c076",
+  "probe_source_sha256": "7e41dafcb8c9e1a46aa200b16581b0edad123bea6974df23b267147c2573f877",
+  "probe_project_sha256": "3b18a9bb065c911d758b56940060faad4e1c7fe1993c8ba623b6b23e03a90ec1",
+  "independent_probe_source_sha256": "5895e407770be8046d4e79f26465a15f3f7579679783f1509e844d0601ae7153",
+  "captured_windows_sha256": "5d6b6512a93233a8410e5399f7e070f4ebf7324842fa779d25d2b7a511977e06",
+  "independent_capture_sha256": "4bf3e2f3cdbaa491c6e90db5a3f6be43a0e41f2be5466aa38a0d2f8bec7ed544",
+  "sources": [
+    {
+      "relative_path": "RustClient_Data/Plugins/x86_64/RustNative.dll",
+      "bytes": 1749840,
+      "sha256": "8dd4e23570729ddbd72844bdb8a5e04bfa671612b3e7d34841d17d2353f7015c"
+    },
+    {
+      "relative_path": "GameAssembly.dll",
+      "bytes": 270636368,
+      "sha256": "199a470f2510320be42d127cc55e946f51a2fc0b0b3ed0bf8671c2a8bb73b252"
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 68754532,
+      "sha256": "266b023e647e1fcedd7c4590ea110d5131bbb070bf23f3c42fb33f935cc9750a"
+    }
+  ],
+  "unity_version": "6000.3.26x1",
+  "entrypoint": {
+    "declaring_type": "GenerateDungeonGrid",
+    "base_type": "ProceduralComponent",
+    "abstract_parameter": "System.UInt32",
+    "virtual_slot": 16,
+    "address": "0x1863a9210"
+  },
+  "reviewed_windows": [
+    {
+      "address": "0x1863a9210",
+      "bytes": 33584,
+      "sha256": "1d50e1dc75a9937a2f71e6b5d5e78f31f54a5694dccabd8c136ed90e9bfbae3f",
+      "complete": true
+    },
+    {
+      "address": "0x1863b1540",
+      "bytes": 1376,
+      "sha256": "7d925d5993f2a8148caeb4e52e9e9d332a859cf09cb7992621ab9e4f5aafeb53",
+      "complete": true
+    },
+    {
+      "address": "0x184154360",
+      "bytes": 800,
+      "sha256": "d2554e55b74999ddba375df06eb71ed77b9b70429e62c432095b5654dda0b6d3",
+      "complete": true
+    },
+    {
+      "address": "0x180f3aa70",
+      "bytes": 656,
+      "sha256": "b8b2b3de71a680b9216c604ef61a16f41ad68f1d10210ca24e4d726c1ef80ba1",
+      "complete": true
+    },
+    {
+      "address": "0x1859f6920",
+      "bytes": 16,
+      "sha256": "7011e3528193ba85bc6a4eabc796e9e2db4f9a19383d9ea32b40bb0cf9ab022f",
+      "complete": true
+    },
+    {
+      "address": "0x1859f5ea0",
+      "bytes": 960,
+      "sha256": "7d0e813735bf5d13f3b152cda8a00e1b0a9ba05e93198c8f4d047f5d2383f1ab",
+      "complete": true
+    },
+    {
+      "address": "0x1859f4bd0",
+      "bytes": 480,
+      "sha256": "f1e4f1efb7e6b88cfcf8f253e6d29f650186048a8f0eb09b261f588644d48158",
+      "complete": true
+    },
+    {
+      "address": "0x1859f8310",
+      "bytes": 464,
+      "sha256": "7f7321aaaf0b12a67e9456dbe81d62c5b80fd75aa848a51236e01a5de3fd7dd3",
+      "complete": true
+    }
+  ],
+  "direct_edges": [
+    {
+      "owner": "0x1863a9210",
+      "instruction": "0x1863acd1c",
+      "target": "0x1863b1540"
+    },
+    {
+      "owner": "0x1863a9210",
+      "instruction": "0x1863ace2c",
+      "target": "0x1863b1540"
+    },
+    {
+      "owner": "0x1863a9210",
+      "instruction": "0x1863b040c",
+      "target": "0x1863b1540"
+    },
+    {
+      "owner": "0x1863b1540",
+      "instruction": "0x1863b1903",
+      "target": "0x184154360"
+    },
+    {
+      "owner": "0x1863b1540",
+      "instruction": "0x1863b19b1",
+      "target": "0x184154360"
+    },
+    {
+      "owner": "0x184154360",
+      "instruction": "0x184154576",
+      "target": "0x180f3aa70"
+    },
+    {
+      "owner": "0x1859f6920",
+      "instruction": "0x1859f6922",
+      "target": "0x1859f5ea0"
+    }
+  ],
+  "environment_query": {
+    "layer_mask": 262144,
+    "trigger_enum": "Collide",
+    "trigger_value": 2,
+    "caller_type_mask_preserved": true,
+    "type_field_offset": 32,
+    "native_query": "UnityEngine.PhysicsScene::OverlapBoxNonAlloc_Internal_Injected",
+    "grid_forbidden_type_mask": 3,
+    "portal_forbidden_type_mask": 1
+  },
+  "lifecycle": {
+    "awake": "0x1859f6920",
+    "update_trigger": "0x1859f5ea0",
+    "enable": "0x1859f4bd0",
+    "disable": "0x1859f8310",
+    "creates_box_only_without_existing_collider": true,
+    "existing_box_gets_authored_center_size": true,
+    "enable_sets_existing_trigger_enabled": true,
+    "disable_sets_existing_trigger_disabled": true,
+    "additional_client_spatial_registry_modeled": false
+  },
+  "owned_files_verified": true,
+  "independent_window_hashes_match": true,
+  "game_code_executed": false,
+  "physx_executed": false,
+  "world_coverage_certified": false,
+  "normal_generation_integrated": false,
+  "scope": "Static source review of environment collider activation and the active dungeon query chain. Stage-owned lifecycle, world coverage, physics and game loading require separate validation.",
+  "repeated_capture_identical": true
+}

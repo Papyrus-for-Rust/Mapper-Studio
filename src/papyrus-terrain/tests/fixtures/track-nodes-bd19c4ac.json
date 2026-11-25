@@ -1,0 +1,786 @@
+{
+  "reference": "installed-server-CollateTrainTracks-NodesConnect",
+  "assembly_sha256": "bd19c4ac705edd18ff556f5dbb3130e098b380577cc2ab0d73a2ec89ee289cc9",
+  "cases": [
+    {
+      "input": {
+        "Name": "gap-0-angle-0",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          3,
+          0,
+          0
+        ]
+      },
+      "expected": true
+    },
+    {
+      "input": {
+        "Name": "gap-0-angle-9.999",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544322,
+          0,
+          0.520893
+        ]
+      },
+      "expected": true
+    },
+    {
+      "input": {
+        "Name": "gap-0-angle-10",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544232,
+          0,
+          0.52094454
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0-angle-10.001",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544141,
+          0,
+          0.5209961
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0-angle-180",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          -3,
+          0,
+          3.6739403E-16
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.099-angle-0",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.099,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          3,
+          0,
+          0
+        ]
+      },
+      "expected": true
+    },
+    {
+      "input": {
+        "Name": "gap-0.099-angle-9.999",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.099,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544322,
+          0,
+          0.520893
+        ]
+      },
+      "expected": true
+    },
+    {
+      "input": {
+        "Name": "gap-0.099-angle-10",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.099,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544232,
+          0,
+          0.52094454
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.099-angle-10.001",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.099,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544141,
+          0,
+          0.5209961
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.099-angle-180",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.099,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          -3,
+          0,
+          3.6739403E-16
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.09999998-angle-0",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.09999998,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          3,
+          0,
+          0
+        ]
+      },
+      "expected": true
+    },
+    {
+      "input": {
+        "Name": "gap-0.09999998-angle-9.999",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.09999998,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544322,
+          0,
+          0.520893
+        ]
+      },
+      "expected": true
+    },
+    {
+      "input": {
+        "Name": "gap-0.09999998-angle-10",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.09999998,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544232,
+          0,
+          0.52094454
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.09999998-angle-10.001",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.09999998,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544141,
+          0,
+          0.5209961
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.09999998-angle-180",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.09999998,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          -3,
+          0,
+          3.6739403E-16
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.1-angle-0",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.1,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          3,
+          0,
+          0
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.1-angle-9.999",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.1,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544322,
+          0,
+          0.520893
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.1-angle-10",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.1,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544232,
+          0,
+          0.52094454
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.1-angle-10.001",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.1,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544141,
+          0,
+          0.5209961
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.1-angle-180",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.1,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          -3,
+          0,
+          3.6739403E-16
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.10000003-angle-0",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.10000003,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          3,
+          0,
+          0
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.10000003-angle-9.999",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.10000003,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544322,
+          0,
+          0.520893
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.10000003-angle-10",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.10000003,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544232,
+          0,
+          0.52094454
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.10000003-angle-10.001",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.10000003,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544141,
+          0,
+          0.5209961
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.10000003-angle-180",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.10000003,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          -3,
+          0,
+          3.6739403E-16
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.101-angle-0",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.101,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          3,
+          0,
+          0
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.101-angle-9.999",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.101,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544322,
+          0,
+          0.520893
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.101-angle-10",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.101,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544232,
+          0,
+          0.52094454
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.101-angle-10.001",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.101,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          2.9544141,
+          0,
+          0.5209961
+        ]
+      },
+      "expected": false
+    },
+    {
+      "input": {
+        "Name": "gap-0.101-angle-180",
+        "A": [
+          0,
+          0,
+          0
+        ],
+        "B": [
+          0.101,
+          0,
+          0
+        ],
+        "TangentA": [
+          2,
+          0,
+          0
+        ],
+        "TangentB": [
+          -3,
+          0,
+          3.6739403E-16
+        ]
+      },
+      "expected": false
+    }
+  ]
+}

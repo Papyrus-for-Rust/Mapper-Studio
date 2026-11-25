@@ -1,0 +1,4114 @@
+{
+  "reference": "installed-server-PathInterpolator-roadside-spans",
+  "assembly_sha256": "bd19c4ac705edd18ff556f5dbb3130e098b380577cc2ab0d73a2ec89ee289cc9",
+  "cases": [
+    {
+      "input": {
+        "Name": "straight",
+        "Points": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            50
+          ],
+          [
+            0,
+            0,
+            100
+          ]
+        ],
+        "Sockets": [
+          [
+            -10,
+            0,
+            0
+          ],
+          [
+            10,
+            0,
+            0
+          ]
+        ],
+        "Min": 0,
+        "Max": 2,
+        "Spacing": 5,
+        "Padding": 5
+      },
+      "expected": {
+        "length": 100,
+        "radius": 10,
+        "start_offset": 0,
+        "end_offset": 0,
+        "spans": [
+          {
+            "distance": 15,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              50
+            ]
+          },
+          {
+            "distance": 20,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              50
+            ]
+          },
+          {
+            "distance": 25,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              50
+            ]
+          },
+          {
+            "distance": 30,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              50
+            ]
+          },
+          {
+            "distance": 35,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              50
+            ]
+          },
+          {
+            "distance": 40,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              50
+            ]
+          },
+          {
+            "distance": 45,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 50,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 55,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 60,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              50
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 65,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              50
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 70,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              50
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 75,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              50
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 80,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              50
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 85,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              50
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "Name": "unequal_controls",
+        "Points": [
+          [
+            0,
+            10,
+            0
+          ],
+          [
+            4,
+            12,
+            5
+          ],
+          [
+            80,
+            5,
+            17
+          ],
+          [
+            100,
+            40,
+            100
+          ]
+        ],
+        "Sockets": [
+          [
+            -10,
+            0,
+            0
+          ],
+          [
+            10,
+            0,
+            0
+          ]
+        ],
+        "Min": 0,
+        "Max": 3,
+        "Spacing": 5,
+        "Padding": 5
+      },
+      "expected": {
+        "length": 176.23885,
+        "radius": 10,
+        "start_offset": 0,
+        "end_offset": 0,
+        "spans": [
+          {
+            "distance": 15,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              10,
+              0
+            ],
+            "b": [
+              4,
+              12,
+              5
+            ]
+          },
+          {
+            "distance": 20,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              10,
+              0
+            ],
+            "b": [
+              4,
+              12,
+              5
+            ]
+          },
+          {
+            "distance": 25,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              10,
+              0
+            ],
+            "b": [
+              4,
+              12,
+              5
+            ]
+          },
+          {
+            "distance": 30,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              10,
+              0
+            ],
+            "b": [
+              4,
+              12,
+              5
+            ]
+          },
+          {
+            "distance": 35,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              10,
+              0
+            ],
+            "b": [
+              4,
+              12,
+              5
+            ]
+          },
+          {
+            "distance": 40,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              10,
+              0
+            ],
+            "b": [
+              4,
+              12,
+              5
+            ]
+          },
+          {
+            "distance": 45,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              10,
+              0
+            ],
+            "b": [
+              4,
+              12,
+              5
+            ]
+          },
+          {
+            "distance": 50,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              10,
+              0
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 55,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              10,
+              0
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 60,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              10,
+              0
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 65,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              10,
+              0
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 70,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 75,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 80,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 85,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 90,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 95,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 100,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 105,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              80,
+              5,
+              17
+            ]
+          },
+          {
+            "distance": 110,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              100,
+              40,
+              100
+            ]
+          },
+          {
+            "distance": 115,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              100,
+              40,
+              100
+            ]
+          },
+          {
+            "distance": 120,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              100,
+              40,
+              100
+            ]
+          },
+          {
+            "distance": 125,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              4,
+              12,
+              5
+            ],
+            "b": [
+              100,
+              40,
+              100
+            ]
+          },
+          {
+            "distance": 130,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              80,
+              5,
+              17
+            ],
+            "b": [
+              100,
+              40,
+              100
+            ]
+          },
+          {
+            "distance": 135,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              80,
+              5,
+              17
+            ],
+            "b": [
+              100,
+              40,
+              100
+            ]
+          },
+          {
+            "distance": 140,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              80,
+              5,
+              17
+            ],
+            "b": [
+              100,
+              40,
+              100
+            ]
+          },
+          {
+            "distance": 145,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              80,
+              5,
+              17
+            ],
+            "b": [
+              100,
+              40,
+              100
+            ]
+          },
+          {
+            "distance": 150,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              80,
+              5,
+              17
+            ],
+            "b": [
+              100,
+              40,
+              100
+            ]
+          },
+          {
+            "distance": 155,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              80,
+              5,
+              17
+            ],
+            "b": [
+              100,
+              40,
+              100
+            ]
+          },
+          {
+            "distance": 160,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              80,
+              5,
+              17
+            ],
+            "b": [
+              100,
+              40,
+              100
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "Name": "trimmed",
+        "Points": [
+          [
+            0,
+            0,
+            -90
+          ],
+          [
+            0,
+            0,
+            -60
+          ],
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            20
+          ],
+          [
+            0,
+            0,
+            120
+          ]
+        ],
+        "Sockets": [
+          [
+            -7,
+            0,
+            0
+          ],
+          [
+            7,
+            0,
+            0
+          ]
+        ],
+        "Min": 1,
+        "Max": 3,
+        "Spacing": 5,
+        "Padding": 5
+      },
+      "expected": {
+        "length": 210,
+        "radius": 7,
+        "start_offset": 52.5,
+        "end_offset": 52.5,
+        "spans": [
+          {
+            "distance": 64.5,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              -60
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 69.5,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              -60
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 74.5,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              -60
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 79.5,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              -60
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 84.5,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              -60
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 89.5,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              -60
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 94.5,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              -60
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 99.5,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              0,
+              0,
+              -60
+            ],
+            "b": [
+              0,
+              0,
+              20
+            ]
+          },
+          {
+            "distance": 104.5,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              0,
+              0,
+              -60
+            ],
+            "b": [
+              0,
+              0,
+              20
+            ]
+          },
+          {
+            "distance": 109.5,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              0,
+              0,
+              -60
+            ],
+            "b": [
+              0,
+              0,
+              20
+            ]
+          },
+          {
+            "distance": 114.5,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              20
+            ]
+          },
+          {
+            "distance": 119.5,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              20
+            ]
+          },
+          {
+            "distance": 124.5,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              20
+            ]
+          },
+          {
+            "distance": 129.5,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              20
+            ]
+          },
+          {
+            "distance": 134.5,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              20
+            ]
+          },
+          {
+            "distance": 139.5,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              20
+            ]
+          },
+          {
+            "distance": 144.5,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              20
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "Name": "asymmetric_three",
+        "Points": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            20,
+            6,
+            50
+          ],
+          [
+            100,
+            9,
+            100
+          ]
+        ],
+        "Sockets": [
+          [
+            -20,
+            4,
+            10
+          ],
+          [
+            10,
+            9,
+            10
+          ],
+          [
+            15,
+            -7,
+            25
+          ]
+        ],
+        "Min": 0,
+        "Max": 2,
+        "Spacing": 5,
+        "Padding": 5
+      },
+      "expected": {
+        "length": 148.57236,
+        "radius": 21.885859,
+        "start_offset": 0,
+        "end_offset": 0,
+        "spans": [
+          {
+            "distance": 26.885859,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              20,
+              6,
+              50
+            ]
+          },
+          {
+            "distance": 31.885859,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              20,
+              6,
+              50
+            ]
+          },
+          {
+            "distance": 36.885857,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              20,
+              6,
+              50
+            ]
+          },
+          {
+            "distance": 41.885857,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              20,
+              6,
+              50
+            ]
+          },
+          {
+            "distance": 46.885857,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              20,
+              6,
+              50
+            ]
+          },
+          {
+            "distance": 51.885857,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              20,
+              6,
+              50
+            ]
+          },
+          {
+            "distance": 56.885857,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 61.885857,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 66.88586,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 71.88586,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 76.88586,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 81.88586,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 86.88586,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 91.88586,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 96.88586,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              6,
+              50
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 101.88586,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              6,
+              50
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 106.88586,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              6,
+              50
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 111.88586,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              6,
+              50
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          },
+          {
+            "distance": 116.88586,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              6,
+              50
+            ],
+            "b": [
+              100,
+              9,
+              100
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "Name": "single_socket",
+        "Points": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            100,
+            10,
+            0
+          ]
+        ],
+        "Sockets": [
+          [
+            8,
+            40,
+            6
+          ]
+        ],
+        "Min": 0,
+        "Max": 1,
+        "Spacing": 5,
+        "Padding": 5
+      },
+      "expected": {
+        "length": 100.49876,
+        "radius": 10,
+        "start_offset": 0,
+        "end_offset": 0,
+        "spans": [
+          {
+            "distance": 15,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 20,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 25,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 30,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 35,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 40,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 45,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 50,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 55,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 60,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 65,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 70,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 75,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 80,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          },
+          {
+            "distance": 85,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              10,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "Name": "closed",
+        "Points": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            100,
+            0,
+            0
+          ],
+          [
+            100,
+            3,
+            100
+          ],
+          [
+            0,
+            0,
+            100
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "Sockets": [
+          [
+            -10,
+            0,
+            5
+          ],
+          [
+            10,
+            0,
+            5
+          ]
+        ],
+        "Min": 0,
+        "Max": 4,
+        "Spacing": 5,
+        "Padding": 5
+      },
+      "expected": {
+        "length": 400.08997,
+        "radius": 11.18034,
+        "start_offset": 0,
+        "end_offset": 0,
+        "spans": [
+          {
+            "distance": 16.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 21.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 26.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 31.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 36.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 41.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 46.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 51.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 56.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 61.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 66.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 71.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 76.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 81.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 86.18034,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 91.18034,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 96.18034,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 101.18034,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 106.18034,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 111.18034,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 116.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 121.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 126.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 131.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 136.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 141.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 146.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 151.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 156.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 161.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 166.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 171.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 176.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 181.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 186.18034,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              100,
+              3,
+              100
+            ]
+          },
+          {
+            "distance": 191.18034,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 196.18034,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 201.18034,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 206.18034,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 211.18034,
+            "start_index": 1,
+            "end_index": 3,
+            "a": [
+              100,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 216.18034,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 221.18034,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 226.18034,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 231.18034,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 236.18034,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 241.18034,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 246.18034,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 251.18034,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 256.18036,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 261.18036,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 266.18036,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 271.18036,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 276.18036,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 281.18036,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 286.18036,
+            "start_index": 2,
+            "end_index": 3,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              100
+            ]
+          },
+          {
+            "distance": 291.18036,
+            "start_index": 2,
+            "end_index": 4,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 296.18036,
+            "start_index": 2,
+            "end_index": 4,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 301.18036,
+            "start_index": 2,
+            "end_index": 4,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 306.18036,
+            "start_index": 2,
+            "end_index": 4,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 311.18036,
+            "start_index": 2,
+            "end_index": 4,
+            "a": [
+              100,
+              3,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 316.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 321.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 326.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 331.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 336.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 341.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 346.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 351.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 356.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 361.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 366.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 371.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 376.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "distance": 381.18036,
+            "start_index": 3,
+            "end_index": 4,
+            "a": [
+              0,
+              0,
+              100
+            ],
+            "b": [
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "Name": "short",
+        "Points": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            10
+          ]
+        ],
+        "Sockets": [
+          [
+            -20,
+            0,
+            0
+          ],
+          [
+            20,
+            0,
+            0
+          ]
+        ],
+        "Min": 0,
+        "Max": 1,
+        "Spacing": 5,
+        "Padding": 5
+      },
+      "expected": {
+        "length": 10,
+        "radius": 20,
+        "start_offset": 0,
+        "end_offset": 0,
+        "spans": []
+      }
+    },
+    {
+      "input": {
+        "Name": "zero_length",
+        "Points": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0
+          ]
+        ],
+        "Sockets": [
+          [
+            -5,
+            0,
+            0
+          ],
+          [
+            5,
+            0,
+            0
+          ]
+        ],
+        "Min": 0,
+        "Max": 1,
+        "Spacing": 5,
+        "Padding": 5
+      },
+      "expected": {
+        "length": 0,
+        "radius": 5,
+        "start_offset": 0,
+        "end_offset": 0,
+        "spans": []
+      }
+    },
+    {
+      "input": {
+        "Name": "vertical_span",
+        "Points": [
+          [
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            100,
+            0
+          ]
+        ],
+        "Sockets": [
+          [
+            -5,
+            0,
+            0
+          ],
+          [
+            5,
+            0,
+            0
+          ]
+        ],
+        "Min": 0,
+        "Max": 1,
+        "Spacing": 5,
+        "Padding": 5
+      },
+      "expected": {
+        "length": 100,
+        "radius": 5,
+        "start_offset": 0,
+        "end_offset": 0,
+        "spans": [
+          {
+            "distance": 10,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 15,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 20,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 25,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 30,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 35,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 40,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 45,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 50,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 55,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 60,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 65,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 70,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 75,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 80,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 85,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          },
+          {
+            "distance": 90,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              0,
+              0,
+              0
+            ],
+            "b": [
+              0,
+              100,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": {
+        "Name": "oblique",
+        "Points": [
+          [
+            100,
+            20,
+            -50
+          ],
+          [
+            20,
+            0,
+            80
+          ],
+          [
+            -150,
+            -10,
+            100
+          ]
+        ],
+        "Sockets": [
+          [
+            -15,
+            0,
+            10
+          ],
+          [
+            5,
+            0,
+            20
+          ]
+        ],
+        "Min": 0,
+        "Max": 2,
+        "Spacing": 5,
+        "Padding": 5
+      },
+      "expected": {
+        "length": 325.41232,
+        "radius": 19.321642,
+        "start_offset": 0,
+        "end_offset": 0,
+        "spans": [
+          {
+            "distance": 24.321642,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 29.321642,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 34.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 39.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 44.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 49.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 54.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 59.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 64.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 69.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 74.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 79.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 84.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 89.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 94.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 99.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 104.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 109.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 114.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 119.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 124.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 129.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 134.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 139.32164,
+            "start_index": 0,
+            "end_index": 1,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              20,
+              0,
+              80
+            ]
+          },
+          {
+            "distance": 144.32164,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 149.32164,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 154.32164,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 159.32164,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 164.32164,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 169.32164,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 174.32164,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 179.32164,
+            "start_index": 0,
+            "end_index": 2,
+            "a": [
+              100,
+              20,
+              -50
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 184.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 189.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 194.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 199.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 204.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 209.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 214.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 219.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 224.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 229.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 234.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 239.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 244.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 249.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 254.32164,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 259.32166,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 264.32166,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 269.32166,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 274.32166,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 279.32166,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 284.32166,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 289.32166,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 294.32166,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          },
+          {
+            "distance": 299.32166,
+            "start_index": 1,
+            "end_index": 2,
+            "a": [
+              20,
+              0,
+              80
+            ],
+            "b": [
+              -150,
+              -10,
+              100
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

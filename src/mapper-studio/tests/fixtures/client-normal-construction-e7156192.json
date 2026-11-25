@@ -1,0 +1,207 @@
+{
+  "format": "mapper-owned-client-normal-construction-evidence",
+  "schema": 1,
+  "game_assembly_sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+  "metadata_sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+  "paper_program_sha256": "b48a03a5b8b079f0fbc660e098a6430ac31ed25f1c4659d96ada88cb94a924d8",
+  "probe_source_sha256": "df407c47f992d655fc0f2435e58641d3eac70020b821133d4180ad4d04304b0e",
+  "probe_project_sha256": "6417a621582d2ae3c7825d061c95860dd8616005f5c32b9eba6959712d563507",
+  "oracle_source_sha256": "497ab28f0e36583852a09b7074d3e33e017347d87996f76068433887ed9d68fa",
+  "normalized_normal_inventory_sha256": "224498a92088e31e0d54f697ccfe9e2e5654f6684bad990d41ebdf26601b16d6",
+  "normalized_apply_listing_sha256": "5266d6c5007ebb6d6b3f0880b54ab264929924cdbb23333cfeef13939b4a6641",
+  "entrypoint": {
+    "type": "GenerateTextures",
+    "virtual_slot": 14,
+    "address": "0x185CEC440"
+  },
+  "direct_call_edges": [
+    [
+      "0x185CEC440",
+      "0x184292660"
+    ],
+    [
+      "0x185CEC440",
+      "0x1842A64B0"
+    ]
+  ],
+  "lookalike_callback_owners": 6,
+  "construction": {
+    "helper": "0x184292660",
+    "height_requested": true,
+    "normal_requested": true,
+    "height_rgba32_requested": false,
+    "resolution": "(height_resolution - 1) / 2",
+    "format": "RGBA32",
+    "format_enum": 4,
+    "mip_count": 1,
+    "linear": true,
+    "wrap_mode": "Clamp",
+    "explicit_filter_mode_observed": false,
+    "row_callback": "0x1842B1470",
+    "sample_at_cell_centers": true,
+    "flatten_angle_degrees": [
+      50,
+      70
+    ],
+    "source_rgb_component": "world Z",
+    "source_alpha_component": "world X"
+  },
+  "upload": {
+    "helper": "0x1842A64B0",
+    "normal_compress_high_quality": false,
+    "compressed_format_captured": false
+  },
+  "consumer": {
+    "register": "t6",
+    "sampler": "s0",
+    "lod": 0,
+    "decoded_x": "2 * red * alpha - 1",
+    "decoded_z": "2 * green - 1",
+    "decoded_up": "sqrt(1 - min(x*x + z*z, 1))",
+    "normal_renormalized": false
+  },
+  "synthetic_shader_probe": {
+    "format": "mapper-owned-shader-packed-normal-probe",
+    "schema": 1,
+    "driver": "d3d11-warp",
+    "rows": [
+      {
+        "sampled_rgba": [
+          1,
+          0.5,
+          0,
+          0.5
+        ],
+        "rgba": [
+          0.947768211,
+          1.01857078,
+          1.03106523,
+          1
+        ]
+      },
+      {
+        "sampled_rgba": [
+          0.5,
+          0.5,
+          0.5,
+          0.5
+        ],
+        "rgba": [
+          0.833576441,
+          0.895555198,
+          0.906492531,
+          1
+        ]
+      },
+      {
+        "sampled_rgba": [
+          0.5,
+          0.5,
+          0,
+          0.5
+        ],
+        "rgba": [
+          0.833576441,
+          0.895555198,
+          0.906492531,
+          1
+        ]
+      },
+      {
+        "sampled_rgba": [
+          0,
+          0.5,
+          1,
+          0.5
+        ],
+        "rgba": [
+          0.606282413,
+          0.65069747,
+          0.658535302,
+          1
+        ]
+      },
+      {
+        "sampled_rgba": [
+          0.25,
+          0.800000012,
+          0.400000006,
+          0.899999976
+        ],
+        "rgba": [
+          0.977499843,
+          1.05059981,
+          1.06349981,
+          1
+        ]
+      },
+      {
+        "sampled_rgba": [
+          1,
+          0.800000012,
+          0.400000006,
+          0.899999976
+        ],
+        "rgba": [
+          0.963989198,
+          1.03604531,
+          1.04876089,
+          1
+        ]
+      },
+      {
+        "sampled_rgba": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "rgba": [
+          1.15669405,
+          1.2436409,
+          1.25898433,
+          1
+        ]
+      },
+      {
+        "sampled_rgba": [
+          0.5,
+          0,
+          0,
+          1
+        ],
+        "rgba": [
+          0.606282413,
+          0.65069747,
+          0.658535302,
+          1
+        ]
+      },
+      {
+        "sampled_rgba": [
+          1,
+          0.5,
+          0,
+          0
+        ],
+        "rgba": [
+          0.606282413,
+          0.65069747,
+          0.658535302,
+          1
+        ]
+      }
+    ]
+  },
+  "maximum_formula_error": 1.486091538716039e-07,
+  "canonical_versus_half_red_max_channel_delta_255": 31.766038245,
+  "normal_inventory_repeat_equal": true,
+  "oracle_repeat_equal": true,
+  "legacy_normal_oracle_unchanged": true,
+  "raw_client_texture_captured": false,
+  "runtime_texture_binding_captured": false,
+  "game_code_executed": false,
+  "game_world_launched": false,
+  "renderer_changed": false,
+  "scope": "Static generation call chain plus actual owned shader over synthetic sampled texels. Not proof of post-compression runtime texture values or full map fidelity."
+}

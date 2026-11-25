@@ -1,0 +1,45 @@
+{
+  "format": "papyrus-roadside-monument-profile",
+  "schema": 1,
+  "id": "client-8dd4e235-roadside-1",
+  "sources": [
+    {
+      "relative_path": "RustClient_Data/Plugins/x86_64/RustNative.dll",
+      "sha256": "8dd4e23570729ddbd72844bdb8a5e04bfa671612b3e7d34841d17d2353f7015c",
+      "bytes": 1749840
+    },
+    {
+      "relative_path": "Bundles/AssetSceneManifest.json",
+      "sha256": "67ee93c4681dcc8d4f9721f0c4eed85cf5812f3bcef8eb37d2d6af4cc5a0eae0",
+      "bytes": 1418181
+    },
+    {
+      "relative_path": "Bundles/shared/assetscenes.bundle",
+      "sha256": "9cd3636e7dfd5a8ac586f879f8d4421b87fb172fc03e5a77ac5baa028b4abb3d",
+      "bytes": 899563968
+    },
+    {
+      "relative_path": "Bundles/maps/maps.bundle",
+      "sha256": "8c268626b5e196e473acaaf7ee9c8e2d73e38b658f0d0f0615e91547cd15f6de",
+      "bytes": 114296560
+    },
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "199a470f2510320be42d127cc55e946f51a2fc0b0b3ed0bf8671c2a8bb73b252",
+      "bytes": 270636368
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "266b023e647e1fcedd7c4590ea110d5131bbb070bf23f3c42fb33f935cc9750a",
+      "bytes": 68754532
+    }
+  ],
+  "proposal_engine": "papyrus-roadside-monument-proposals-1",
+  "road_infrastructure_type": 0,
+  "trail_infrastructure_type": 2,
+  "sample_spacing": 5.0,
+  "end_padding": 5.0,
+  "group_attempts": 8,
+  "individual_candidates": 8,
+  "stage_layout": "mode-description"
+}

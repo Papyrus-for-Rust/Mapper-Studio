@@ -1,0 +1,427 @@
+{
+  "reference": "owned-server-PathList.GetRadius",
+  "assembly_sha256": "bd19c4ac705edd18ff556f5dbb3130e098b380577cc2ab0d73a2ec89ee289cc9",
+  "native_sha256": "abe4c229e544e86516b242f0ec5b0b7bdb267869e419ccb7ae3ff9bc7e48bf2b",
+  "cases": [
+    {
+      "distance": -32,
+      "length": 0,
+      "signed_noise": 0.40795285,
+      "unsigned_noise": 1.2039764,
+      "radius": 3
+    },
+    {
+      "distance": -32,
+      "length": 0,
+      "signed_noise": 0.40795285,
+      "unsigned_noise": 1.2039764,
+      "radius": 3
+    },
+    {
+      "distance": -32,
+      "length": 68,
+      "signed_noise": 0.40795285,
+      "unsigned_noise": 1.2039764,
+      "radius": 3
+    },
+    {
+      "distance": -32,
+      "length": 968,
+      "signed_noise": 0.40795285,
+      "unsigned_noise": 1.2039764,
+      "radius": 3
+    },
+    {
+      "distance": -32,
+      "length": 0,
+      "signed_noise": 0.40795285,
+      "unsigned_noise": 1.2039764,
+      "radius": 3
+    },
+    {
+      "distance": 0,
+      "length": 0,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 3
+    },
+    {
+      "distance": 0,
+      "length": 1,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 8.4
+    },
+    {
+      "distance": 0,
+      "length": 100,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 3
+    },
+    {
+      "distance": 0,
+      "length": 1000,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 3
+    },
+    {
+      "distance": 0,
+      "length": 0,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 3
+    },
+    {
+      "distance": 0.01,
+      "length": 0,
+      "signed_noise": -0.00012037037,
+      "unsigned_noise": 0.9999398,
+      "radius": 3.00027
+    },
+    {
+      "distance": 0.01,
+      "length": 1,
+      "signed_noise": -0.00012037037,
+      "unsigned_noise": 0.9999398,
+      "radius": 8.403764
+    },
+    {
+      "distance": 0.01,
+      "length": 100,
+      "signed_noise": -0.00012037037,
+      "unsigned_noise": 0.9999398,
+      "radius": 3.0005703
+    },
+    {
+      "distance": 0.01,
+      "length": 1000,
+      "signed_noise": -0.00012037037,
+      "unsigned_noise": 0.9999398,
+      "radius": 3.00027
+    },
+    {
+      "distance": 0.01,
+      "length": 0,
+      "signed_noise": -0.00012037037,
+      "unsigned_noise": 0.9999398,
+      "radius": 3.00027
+    },
+    {
+      "distance": 4,
+      "length": 4,
+      "signed_noise": -0.0482369,
+      "unsigned_noise": 0.9758816,
+      "radius": 9.326382
+    },
+    {
+      "distance": 4,
+      "length": 5,
+      "signed_noise": -0.0482369,
+      "unsigned_noise": 0.9758816,
+      "radius": 8.704622
+    },
+    {
+      "distance": 4,
+      "length": 104,
+      "signed_noise": -0.0482369,
+      "unsigned_noise": 0.9758816,
+      "radius": 3.1087937
+    },
+    {
+      "distance": 4,
+      "length": 1004,
+      "signed_noise": -0.0482369,
+      "unsigned_noise": 0.9758816,
+      "radius": 3.1087937
+    },
+    {
+      "distance": 4,
+      "length": 0,
+      "signed_noise": -0.0482369,
+      "unsigned_noise": 0.9758816,
+      "radius": 3.1087937
+    },
+    {
+      "distance": 31,
+      "length": 31,
+      "signed_noise": -0.39447075,
+      "unsigned_noise": 0.80276465,
+      "radius": 11.673106
+    },
+    {
+      "distance": 31,
+      "length": 32,
+      "signed_noise": -0.39447075,
+      "unsigned_noise": 0.80276465,
+      "radius": 10.894898
+    },
+    {
+      "distance": 31,
+      "length": 131,
+      "signed_noise": -0.39447075,
+      "unsigned_noise": 0.80276465,
+      "radius": 3.8910356
+    },
+    {
+      "distance": 31,
+      "length": 1031,
+      "signed_noise": -0.39447075,
+      "unsigned_noise": 0.80276465,
+      "radius": 3.8910356
+    },
+    {
+      "distance": 31,
+      "length": 0,
+      "signed_noise": -0.39447075,
+      "unsigned_noise": 0.80276465,
+      "radius": 3.8910356
+    },
+    {
+      "distance": 128,
+      "length": 128,
+      "signed_noise": -0.88857,
+      "unsigned_noise": 0.55571496,
+      "radius": 19.591095
+    },
+    {
+      "distance": 128,
+      "length": 129,
+      "signed_noise": -0.88857,
+      "unsigned_noise": 0.55571496,
+      "radius": 18.28502
+    },
+    {
+      "distance": 128,
+      "length": 228,
+      "signed_noise": -0.88857,
+      "unsigned_noise": 0.55571496,
+      "radius": 6.5303645
+    },
+    {
+      "distance": 128,
+      "length": 1128,
+      "signed_noise": -0.88857,
+      "unsigned_noise": 0.55571496,
+      "radius": 6.5303645
+    },
+    {
+      "distance": 128,
+      "length": 0,
+      "signed_noise": -0.88857,
+      "unsigned_noise": 0.55571496,
+      "radius": 6.5303645
+    },
+    {
+      "distance": 511,
+      "length": 511,
+      "signed_noise": 0.1098714,
+      "unsigned_noise": 1.0549357,
+      "radius": 41.192997
+    },
+    {
+      "distance": 511,
+      "length": 512,
+      "signed_noise": 0.1098714,
+      "unsigned_noise": 1.0549357,
+      "radius": 38.446796
+    },
+    {
+      "distance": 511,
+      "length": 611,
+      "signed_noise": 0.1098714,
+      "unsigned_noise": 1.0549357,
+      "radius": 13.730999
+    },
+    {
+      "distance": 511,
+      "length": 1511,
+      "signed_noise": 0.1098714,
+      "unsigned_noise": 1.0549357,
+      "radius": 13.730999
+    },
+    {
+      "distance": 511,
+      "length": 0,
+      "signed_noise": 0.1098714,
+      "unsigned_noise": 1.0549357,
+      "radius": 13.730999
+    },
+    {
+      "distance": 999,
+      "length": 999,
+      "signed_noise": 0.01203879,
+      "unsigned_noise": 1.0060194,
+      "radius": 71.937
+    },
+    {
+      "distance": 999,
+      "length": 1000,
+      "signed_noise": 0.01203879,
+      "unsigned_noise": 1.0060194,
+      "radius": 67.1412
+    },
+    {
+      "distance": 999,
+      "length": 1099,
+      "signed_noise": 0.01203879,
+      "unsigned_noise": 1.0060194,
+      "radius": 23.979
+    },
+    {
+      "distance": 999,
+      "length": 1999,
+      "signed_noise": 0.01203879,
+      "unsigned_noise": 1.0060194,
+      "radius": 23.979
+    },
+    {
+      "distance": 999,
+      "length": 0,
+      "signed_noise": 0.01203879,
+      "unsigned_noise": 1.0060194,
+      "radius": 23.979
+    },
+    {
+      "distance": 1000,
+      "length": 1000,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 72
+    },
+    {
+      "distance": 1000,
+      "length": 1001,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 67.2
+    },
+    {
+      "distance": 1000,
+      "length": 1100,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 24
+    },
+    {
+      "distance": 1000,
+      "length": 2000,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 24
+    },
+    {
+      "distance": 1000,
+      "length": 0,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 24
+    },
+    {
+      "distance": 1750,
+      "length": 1750,
+      "signed_noise": 0.344713,
+      "unsigned_noise": 1.1723565,
+      "radius": 72
+    },
+    {
+      "distance": 1750,
+      "length": 1751,
+      "signed_noise": 0.344713,
+      "unsigned_noise": 1.1723565,
+      "radius": 67.2
+    },
+    {
+      "distance": 1750,
+      "length": 1850,
+      "signed_noise": 0.344713,
+      "unsigned_noise": 1.1723565,
+      "radius": 24
+    },
+    {
+      "distance": 1750,
+      "length": 2750,
+      "signed_noise": 0.344713,
+      "unsigned_noise": 1.1723565,
+      "radius": 24
+    },
+    {
+      "distance": 1750,
+      "length": 0,
+      "signed_noise": 0.344713,
+      "unsigned_noise": 1.1723565,
+      "radius": 24
+    },
+    {
+      "distance": 4000,
+      "length": 4000,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 72
+    },
+    {
+      "distance": 4000,
+      "length": 4001,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 67.2
+    },
+    {
+      "distance": 4000,
+      "length": 4100,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 24
+    },
+    {
+      "distance": 4000,
+      "length": 5000,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 24
+    },
+    {
+      "distance": 4000,
+      "length": 0,
+      "signed_noise": 0,
+      "unsigned_noise": 1,
+      "radius": 24
+    },
+    {
+      "distance": 19996,
+      "length": 19996,
+      "signed_noise": 0.04795404,
+      "unsigned_noise": 1.023977,
+      "radius": 72
+    },
+    {
+      "distance": 19996,
+      "length": 19997,
+      "signed_noise": 0.04795404,
+      "unsigned_noise": 1.023977,
+      "radius": 67.2
+    },
+    {
+      "distance": 19996,
+      "length": 20096,
+      "signed_noise": 0.04795404,
+      "unsigned_noise": 1.023977,
+      "radius": 24
+    },
+    {
+      "distance": 19996,
+      "length": 20996,
+      "signed_noise": 0.04795404,
+      "unsigned_noise": 1.023977,
+      "radius": 24
+    },
+    {
+      "distance": 19996,
+      "length": 0,
+      "signed_noise": 0.04795404,
+      "unsigned_noise": 1.023977,
+      "radius": 24
+    }
+  ]
+}

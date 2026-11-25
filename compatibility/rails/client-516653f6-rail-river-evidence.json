@@ -1,0 +1,202 @@
+{
+  "format": "papyrus-client-rail-river-static-evidence",
+  "schema": 1,
+  "unity_version": "6000.3.28x1",
+  "metadata_version": 39,
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "bytes": 270462288,
+      "sha256": "516653f622c05ed95d6667ebda0f68321f2f10ea755feab929cfb6897d08c1fd"
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 68769640,
+      "sha256": "d3380cd4e62412f01ba99825204bee3f33fa238e4ac0ec4b98c8a1873a133632"
+    }
+  ],
+  "profiles": [
+    {
+      "path": "compatibility/rails/client-58f3263f.json",
+      "sha256": "03e729f85509fc9358eb6426a1232da81ef656936450bb76a08b499038812305"
+    },
+    {
+      "path": "compatibility/rivers/client-58f3263f-generation.json",
+      "sha256": "efa4d7c4baf78d5f73f57046d72a1f74fd1630841c779320a6b9e830727add83"
+    }
+  ],
+  "reviewed_windows": [
+    {
+      "type": "GenerateRailRing",
+      "address": "0x1858f43d0",
+      "bytes": 5968,
+      "sha256": "40e910588dccf508f551c30203283d485527e9d43d74dab190d2897b2bee2a6c",
+      "complete": true,
+      "capture": "client-58f-active-process-part1-20261118.json"
+    },
+    {
+      "type": "GenerateRailLayout",
+      "address": "0x18174eaa0",
+      "bytes": 11536,
+      "sha256": "3b59a07c821366e5474a375c757f95e321c5d1455b2a9edf9d995a61b3226eb9",
+      "complete": true,
+      "capture": "client-58f-active-process-part1-20261118.json"
+    },
+    {
+      "type": "GenerateRailBranching",
+      "address": "0x180f44200",
+      "bytes": 8768,
+      "sha256": "6055c53d84dc92c5d2cca7c0336c03671ca86a032908802d4bbabc5e5dca5a40",
+      "complete": true,
+      "capture": "client-58f-active-process-part2-20261118.json"
+    },
+    {
+      "type": "GenerateRailSiding",
+      "address": "0x183de96a0",
+      "bytes": 4544,
+      "sha256": "792af300980e4d3726a1b3b0518afe7d39ebbbfbaa11a926f2597a5c2240598b",
+      "complete": true,
+      "capture": "client-58f-active-process-part2-20261118.json"
+    },
+    {
+      "type": "TerrainPath",
+      "address": "0x18302bd60",
+      "bytes": 1072,
+      "sha256": "8b652b3fee09587871589e46e44303ea91cb929b25f236493b9432109d44aefb",
+      "complete": true,
+      "capture": "client-58f-rail-helpers-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRailTerrain+<>c__DisplayClass7_1",
+      "address": "0x184382930",
+      "bytes": 192,
+      "sha256": "f38264b3d7779d220f3f226793c995984dde337a8c54d9105a6951365cc0dfe0",
+      "complete": true,
+      "capture": "client-58f-rail-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRailTerrain",
+      "address": "0x184381aa0",
+      "bytes": 2544,
+      "sha256": "598c18e5c9cef667869ffb31631caba9d3694f36be44b05a3992c804915726a1",
+      "complete": true,
+      "capture": "client-58f-rail-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRailTopology+<>c__DisplayClass1_0",
+      "address": "0x183158510",
+      "bytes": 208,
+      "sha256": "d940ffd9cf00dc885687f341e8d40364606584db9feab58c3d6d4f3dc4d518db",
+      "complete": true,
+      "capture": "client-58f-rail-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRailTopology",
+      "address": "0x183155ef0",
+      "bytes": 656,
+      "sha256": "6862b625fe1594c179b360252389bc6deab92bbe84b3a549f3995ac205104814",
+      "complete": true,
+      "capture": "client-58f-rail-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRailTexture",
+      "address": "0x181846d30",
+      "bytes": 544,
+      "sha256": "0c7539cd44ab03ec95f9991ed0ad2420d4fa297694744835e92fe8469ab72dbe",
+      "complete": true,
+      "capture": "client-58f-rail-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRailMeshes",
+      "address": "0x1839c54e0",
+      "bytes": 2368,
+      "sha256": "7f7f8b43bf080f5f9e80d4ffc11f0c8f4d7b8f077030631e4198994751c671cf",
+      "complete": true,
+      "capture": "client-58f-rail-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRiverTopology",
+      "address": "0x185ea53d0",
+      "bytes": 912,
+      "sha256": "ab177350afc56b7606fa1f3db8657b863f31439097df6b6acdde20dfbd961b31",
+      "complete": true,
+      "capture": "client-58f-river-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRiverTerrain",
+      "address": "0x184a7d760",
+      "bytes": 1152,
+      "sha256": "7cb6f721e8697ae84a57d769deab33869ac6d2d17bb93e2ef64d0ac28faaa9a1",
+      "complete": true,
+      "capture": "client-58f-river-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRiverTexture",
+      "address": "0x1823e1250",
+      "bytes": 544,
+      "sha256": "7d2240cc005bea4e196c70193fdb97f77a062d17394c7a71f7cbe56425dbf34c",
+      "complete": true,
+      "capture": "client-58f-river-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRiverMeshes",
+      "address": "0x1865a6f30",
+      "bytes": 2160,
+      "sha256": "b4ff01a56b64fd40abf42aa3c87a4c376879b740736cfda6392c3fc1100d7159",
+      "complete": true,
+      "capture": "client-58f-river-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRiverLayout",
+      "address": "0x182f8ab40",
+      "bytes": 7168,
+      "sha256": "bfa12b5dff12dd92b9f239a4d715dd05f4883eeaff76cec88f663806c2bdfeb3",
+      "complete": true,
+      "capture": "client-58f-river-focused-windows-20261118.json"
+    }
+  ],
+  "asset_captures": [
+    {
+      "path": "client-58f-rail-capture-20261118/ad4a719922e8d18d19b861dab0841fd12a824847aea7831fc9cd181997aaad62/rails.json",
+      "sha256": "ad4a719922e8d18d19b861dab0841fd12a824847aea7831fc9cd181997aaad62",
+      "stages": 9,
+      "meshes": 0
+    },
+    {
+      "path": "client-58f-rail-mesh-capture-20261118/a4183c867fc59cb819d4062b9c6644179f441337c720e47d1cad755aa375451b/meshes.json",
+      "sha256": "a4183c867fc59cb819d4062b9c6644179f441337c720e47d1cad755aa375451b",
+      "stages": 0,
+      "meshes": 3
+    },
+    {
+      "path": "client-58f-river-mesh-capture-20261118/5058f248c7a25380a8aa7d1d16998034e8a662f319df83bfd6868bcdb9acc0e1/meshes.json",
+      "sha256": "5058f248c7a25380a8aa7d1d16998034e8a662f319df83bfd6868bcdb9acc0e1",
+      "stages": 5,
+      "meshes": 0
+    }
+  ],
+  "water_enum_capture": {
+    "path": "client-58f-water-types-20261118.json",
+    "sha256": "44a17c802fdcff91b9221861782bf5a61ee9492ff1728ceb99a860d0eb4556c7",
+    "river_type": 2
+  },
+  "observations": {
+    "rail_costmap": "All four rail layout stages call TerrainPath 0x18302bd60. Its lattice is 7.5 m, radii are 5 and 25 m, and slope thresholds are 30, 20 and 10 degrees.",
+    "rail_paths": "The ring uses width 4, outer fade 32, topology 524288, splat mask 128, random scale 1 and offset -0.125. Ring, access and branch processing request 32 horizontal and 64 vertical smoothing iterations.",
+    "rail_bed": "The active terrain pass uses eight loops, eight smoothing iterations, transition distance 8 and water clearance 2. The hierarchy capture retains nine rail stages and a 4250 m default ring minimum.",
+    "rail_collation": "The selected client CollateTrainTracks virtual process slot 12 resolves to a shared 16-byte empty body. Independent connection rules and spline offset 0.41 retain the checked server reference below.",
+    "river_layout": "The complete current layout window retains the 250/750/5 source scan, minimum start height 15, normal range 0.01 through 0.99, step 4, maximum 5000 steps, minimum 62 controls and 4000 m population threshold.",
+    "river_policy": "Mapper retains its independently ported, server-referenced layout, carving and painting kernels. Current-client mesh and hierarchy bindings are checked separately.",
+    "river_template": "The current hierarchy provides the surface-water template and interior/cap references. WaterBodyType.River is 2. The mesh process uses normal smoothing 0.1."
+  },
+  "server_reference": {
+    "sha256": "bd19c4ac705edd18ff556f5dbb3130e098b380577cc2ab0d73a2ec89ee289cc9",
+    "bytes": 9593680,
+    "verified_on_disk": true,
+    "new_server_version_verified": false
+  },
+  "game_code_executed": false,
+  "physics_executed": false,
+  "complete_world_validated": false,
+  "server_loading_validated": false
+}

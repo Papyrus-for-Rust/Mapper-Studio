@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "native_sha256": "0f703d43b57672b8bb3dfd29bab0d484f8622fbac66dee7f1f058893ef22a99c",
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+      "bytes": 304039424
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+      "bytes": 68271512
+    }
+  ],
+  "map_scene": {
+    "relative_path": "Bundles/maps/maps.bundle",
+    "sha256": "50d7c807360ad98b18b91588aafbec2a9d5bc7c2102cc90d4b250a63dc209a63",
+    "bytes": 114140208
+  },
+  "format": "papyrus-final-cliff-topology-profile",
+  "process_sha256": "512a6c31a8e71ec03877e964a25cebcab770844c3413c44d63dee8c95d18536e",
+  "classification_sha256": "e81e4b3b547ed91c960c23297b456b627618cc8170d081889ebec9532c906869",
+  "dilation_sha256": "7ee7da77e3523653db5d640be47209b1ce8be892c643d05c6018b9f7d29fbefc",
+  "stage_ids": [
+    413,
+    363
+  ],
+  "keep_existing": false,
+  "policy": {
+    "cliff_flag": 2,
+    "cliffside_flag": 4194304,
+    "protected_topology": 8389632,
+    "rock_channel": 3,
+    "slope_cutoff": 30.0,
+    "rock_cutoff": 0.4,
+    "radius_cells": 1
+  }
+}

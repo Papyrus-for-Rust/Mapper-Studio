@@ -1,0 +1,9 @@
+{
+  "format": "papyrus-offshore-world-profile",
+  "schema": 1,
+  "id": "client-8dd4e235-offshore-world-1",
+  "native_sha256": "8dd4e23570729ddbd72844bdb8a5e04bfa671612b3e7d34841d17d2353f7015c",
+  "scene_sha256": "9cd3636e7dfd5a8ac586f879f8d4421b87fb172fc03e5a77ac5baa028b4abb3d",
+  "stage_profile_id": "client-8dd4e235-uncached-stages-1",
+  "lake_type": 4
+}

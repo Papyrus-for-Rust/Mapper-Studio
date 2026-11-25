@@ -1,0 +1,144 @@
+{
+  "format": "papyrus-river-generation-profile",
+  "schema": 1,
+  "id": "client-0f703d43-independent-rivers-1",
+  "reference_assembly_sha256": "bd19c4ac705edd18ff556f5dbb3130e098b380577cc2ab0d73a2ec89ee289cc9",
+  "scope": "Version-bound independent river adapter from inspected server kernels and this exact owned client scene/template. Not native Unity runtime parity.",
+  "mesh_profile": {
+    "format": "papyrus-river-water-mesh-profile",
+    "schema": 1,
+    "id": "client-0f703d43-water-mesh-1",
+    "native_sha256": "0f703d43b57672b8bb3dfd29bab0d484f8622fbac66dee7f1f058893ef22a99c",
+    "scene_sha256": "dfed19615a919bc4f58e8675e632a172f5f1488ddf7cb60a49601081c3b6eeb4",
+    "reference_assembly_sha256": "bd19c4ac705edd18ff556f5dbb3130e098b380577cc2ab0d73a2ec89ee289cc9",
+    "code_sources": [
+      {
+        "relative_path": "GameAssembly.dll",
+        "sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+        "bytes": 304039424
+      },
+      {
+        "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+        "sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+        "bytes": 68271512
+      }
+    ],
+    "map_scene": {
+      "relative_path": "Bundles/maps/maps.bundle",
+      "sha256": "50d7c807360ad98b18b91588aafbec2a9d5bc7c2102cc90d4b250a63dc209a63",
+      "bytes": 114140208
+    },
+    "policy": {
+      "chunk_repetitions": 5,
+      "normal_smoothing": 0.1,
+      "round_vertices": 4,
+      "snap_to_terrain": false,
+      "snap_open_endpoints": true,
+      "top_aligned": false,
+      "mesh_offset": -0.5,
+      "two_sided": false,
+      "water_body_type": 2,
+      "add_topology": false,
+      "clearance_rule": "inverse_world_z"
+    }
+  },
+  "large_world_above": 4000,
+  "large_world_maximum_rivers": 3,
+  "terrain_origin_y": -500.0,
+  "terrain_height": 1000.0,
+  "layout": {
+    "scan": [
+      250.0,
+      750.0,
+      5.0
+    ],
+    "minimum_start_height": 15.0,
+    "start_normal_y": [
+      0.01,
+      0.99
+    ],
+    "separation": 520.0,
+    "step": 4.0,
+    "maximum_steps": 5000,
+    "control_stride": 4,
+    "self_history_skip": 10,
+    "self_clearance": 130.0,
+    "maximum_rise": 32.0,
+    "height_blend": [
+      0.15,
+      0.95,
+      10.0
+    ],
+    "bend": [
+      30.0,
+      10.0,
+      60.0,
+      0.5
+    ],
+    "direction_blend": 0.025,
+    "width": 8.0,
+    "padding": [
+      1.0,
+      1.0
+    ],
+    "fade": [
+      16.0,
+      64.0
+    ],
+    "random_scale": 0.75,
+    "radius_growth": [
+      1.0,
+      8.0,
+      1000.0
+    ],
+    "radius_mouth": [
+      3.0,
+      1.0,
+      100.0
+    ],
+    "noise_frequency": 0.005,
+    "blocked_topology": 3742724,
+    "ocean_topology": 128,
+    "minimum_controls": 62,
+    "maximum_rivers": 2,
+    "exempt_biome": 16,
+    "occupancy_spacing": 16.0,
+    "smoothing": [
+      4,
+      8
+    ],
+    "resample_distance": 7.5
+  },
+  "carve": {
+    "vertical_iterations": 8,
+    "sample_spacing": 1.0,
+    "terrain_offset": -1.5,
+    "depth_growth": [
+      1.0,
+      3.0,
+      1000.0
+    ],
+    "inner_scale": [
+      0.3,
+      1.0,
+      1000.0
+    ],
+    "intensity": 1.0,
+    "fade_multiplier": 1.0
+  },
+  "surface": {
+    "sample_spacing": 1.0,
+    "splat_channel": 7,
+    "topology_mask": 16384,
+    "topology_threshold": 0.3,
+    "bank": {
+      "source_mask": 49152,
+      "eligible_mask": 49,
+      "bank_flag": 32768,
+      "cliff_flag": 2,
+      "radius_cells": 6,
+      "cliff_slope_degrees": 40.0,
+      "slope_coordinates": "callback_transposed"
+    }
+  }
+}

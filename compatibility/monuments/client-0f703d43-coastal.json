@@ -1,0 +1,54 @@
+{
+  "format": "papyrus-coastal-placement-profile",
+  "schema": 1,
+  "id": "client-0f703d43-ocean-coastal-1",
+  "native_sha256": "0f703d43b57672b8bb3dfd29bab0d484f8622fbac66dee7f1f058893ef22a99c",
+  "scene_sha256": "dfed19615a919bc4f58e8675e632a172f5f1488ddf7cb60a49601081c3b6eeb4",
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+      "bytes": 304039424
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+      "bytes": 68271512
+    }
+  ],
+  "map_scene": {
+    "relative_path": "Bundles/maps/maps.bundle",
+    "sha256": "50d7c807360ad98b18b91588aafbec2a9d5bc7c2102cc90d4b250a63dc209a63",
+    "bytes": 114140208
+  },
+  "sea_level": 0.0,
+  "boat_type": 5,
+  "boat_cell_size": 7.5,
+  "minimum_boat_depth": 4.0,
+  "minimum_tier_corners": 1,
+  "maximum_cut_fill": 128.0,
+  "stage_filters": {
+    "assets/bundled/prefabs/autospawn/monument/harbor/": {
+      "SplatType": -1,
+      "BiomeType": -1,
+      "TopologyAny": -1,
+      "TopologyAll": 0,
+      "TopologyNot": 1628160
+    },
+    "assets/bundled/prefabs/autospawn/monument/fishing_village/": {
+      "SplatType": -1,
+      "BiomeType": 23,
+      "TopologyAny": -1,
+      "TopologyAll": 0,
+      "TopologyNot": 1628160
+    },
+    "assets/bundled/prefabs/autospawn/monument/lighthouse/": {
+      "SplatType": -1,
+      "BiomeType": -1,
+      "TopologyAny": 128,
+      "TopologyAll": 0,
+      "TopologyNot": 7928958
+    }
+  },
+  "candidate_samples": 2048
+}

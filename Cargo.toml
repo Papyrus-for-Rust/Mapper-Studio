@@ -1,0 +1,16 @@
+[workspace]
+members = ["src/papyrus-terrain", "src/mapper-studio", "src/papyrus-file-id", "src/mapper-plugin-sdk"]
+default-members = ["src/papyrus-terrain"]
+resolver = "2"
+
+# Large installation bundles are verified during interactive development runs.
+[profile.dev.package.sha2]
+opt-level = 3
+
+# Studio test binaries exceed the Windows linker's PDB limit with full symbols.
+[profile.test.package.mapper-studio]
+debug = 0
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

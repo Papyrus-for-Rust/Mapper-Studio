@@ -1,0 +1,43 @@
+{
+  "native_sha256": "8dd4e23570729ddbd72844bdb8a5e04bfa671612b3e7d34841d17d2353f7015c",
+  "scene_sha256": "9cd3636e7dfd5a8ac586f879f8d4421b87fb172fc03e5a77ac5baa028b4abb3d",
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "199a470f2510320be42d127cc55e946f51a2fc0b0b3ed0bf8671c2a8bb73b252",
+      "bytes": 270636368
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "266b023e647e1fcedd7c4590ea110d5131bbb070bf23f3c42fb33f935cc9750a",
+      "bytes": 68754532
+    }
+  ],
+  "map_scene": {
+    "relative_path": "Bundles/maps/maps.bundle",
+    "sha256": "8c268626b5e196e473acaaf7ee9c8e2d73e38b658f0d0f0615e91547cd15f6de",
+    "bytes": 114296560
+  },
+  "format": "papyrus-road-surface-profile",
+  "schema": 1,
+  "id": "client-8dd4e235-road-surface-1",
+  "policy": {
+    "engine": "papyrus-road-surface-1",
+    "chunk_repetitions": 5,
+    "maximum_hierarchy_exclusive": 2,
+    "spline": true,
+    "snap_to_terrain": true,
+    "snap_open_endpoints": true,
+    "normal_smoothing": 0.0,
+    "random_scale": 0.75,
+    "mesh_offset": 0.0,
+    "noise_export": "snoise1_32",
+    "noise_frequency": 0.005,
+    "noise_unsigned_scale": 0.5,
+    "noise_unsigned_bias": 1.0,
+    "scale_width_with_length": false,
+    "top_aligned": false,
+    "round_vertices": 0
+  },
+  "stage_layout": "mode-description"
+}

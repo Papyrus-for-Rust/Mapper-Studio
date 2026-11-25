@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "output": 100,
+  "nodes": [
+    { "id": 10, "op": { "kind": "height", "metres": -65 } },
+    { "id": 20, "op": { "kind": "height", "metres": 60 } },
+    { "id": 30, "op": { "kind": "ellipse", "center": [-460, -350], "radii": [1080, 760], "rotation": 22, "feather": 0.25 } },
+    { "id": 40, "op": { "kind": "ellipse", "center": [720, 730], "radii": [640, 485], "rotation": -26, "feather": 0.33 } },
+    { "id": 50, "op": { "kind": "ellipse", "center": [-970, 820], "radii": [390, 335], "rotation": 12, "feather": 0.35 } },
+    { "id": 60, "op": { "kind": "combine", "left": 30, "right": 40, "mode": "union" } },
+    { "id": 70, "op": { "kind": "combine", "left": 60, "right": 50, "mode": "union" } },
+    { "id": 80, "op": { "kind": "blend", "low": 10, "high": 20, "mask": 70 } },
+    { "id": 85, "op": { "kind": "noise", "mode": "fractal", "wavelength": 560, "octaves": 3, "persistence": 0.52 } },
+    { "id": 90, "op": { "kind": "combine", "left": 70, "right": 85, "mode": "multiply" } },
+    { "id": 100, "op": { "kind": "raise", "height": 80, "mask": 90, "metres": 90 } }
+  ]
+}

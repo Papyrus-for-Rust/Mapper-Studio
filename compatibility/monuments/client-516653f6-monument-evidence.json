@@ -1,0 +1,207 @@
+{
+  "format": "papyrus-client-monument-static-evidence",
+  "schema": 1,
+  "source_profiles": [
+    {
+      "path": "compatibility/monuments/client-516653f6-environment.json",
+      "sha256": "a2eb6d371e040f4c4a5d7f02c2ab50f5f50c3bb001b535301bffa73147004907",
+      "lf_sha256": "b63e49748ef14dbe660c2d1a86af3ac1874322428e1a2c80183ca9fa876e9456",
+      "crlf_sha256": "a2eb6d371e040f4c4a5d7f02c2ab50f5f50c3bb001b535301bffa73147004907"
+    },
+    {
+      "path": "compatibility/monuments/client-58f3263f.json",
+      "sha256": "942a5dd9fd2576a9b8376dd28c89ac899166be34bb9cfb89eefa16e34c86d168",
+      "lf_sha256": "c674aafc7a68a701cfdcb266d4568a0e05903c9845f98fad4503f3cd6a06f7cd",
+      "crlf_sha256": "942a5dd9fd2576a9b8376dd28c89ac899166be34bb9cfb89eefa16e34c86d168"
+    },
+    {
+      "path": "compatibility/monuments/client-58f3263f-stages.json",
+      "sha256": "280b7a11e5d68cfad533b33c664ab238acd5ab16cca30dd67fe6f5be01c3c340",
+      "lf_sha256": "03ffa28932e6cbdc3fdfc79e15d692553721d9298ececf28f87dd917bd43a0e9",
+      "crlf_sha256": "280b7a11e5d68cfad533b33c664ab238acd5ab16cca30dd67fe6f5be01c3c340"
+    },
+    {
+      "path": "compatibility/monuments/client-58f3263f-coastal.json",
+      "sha256": "6a460c91b703f17db0e1fe9a437a7e7e3ca264c26ebf225c536d9089dc9f74f6",
+      "lf_sha256": "e7d5b6e7e8ecd11745f5e97f20a0151fc1732cddffc6f2c8312512d420080e7d",
+      "crlf_sha256": "6a460c91b703f17db0e1fe9a437a7e7e3ca264c26ebf225c536d9089dc9f74f6"
+    },
+    {
+      "path": "compatibility/topology/client-58f3263f.json",
+      "sha256": "bd14b50a3d852d4e2aa8d0b9ad1721a36e8f7211a56878e58e25bbd05d187f8c",
+      "lf_sha256": "372119399651824a63a8ae2c88b71dc419db9f417d893405147f4436ed7403bd",
+      "crlf_sha256": "bd14b50a3d852d4e2aa8d0b9ad1721a36e8f7211a56878e58e25bbd05d187f8c"
+    }
+  ],
+  "sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "bytes": 270462288,
+      "sha256": "516653f622c05ed95d6667ebda0f68321f2f10ea755feab929cfb6897d08c1fd"
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 68769640,
+      "sha256": "d3380cd4e62412f01ba99825204bee3f33fa238e4ac0ec4b98c8a1873a133632"
+    }
+  ],
+  "unity_version": "6000.3.28x1",
+  "metadata_version": 39,
+  "procedural_virtual_slot": 12,
+  "captures": [
+    {
+      "name": "client-58f-environment-reviewed-windows-20261118.json",
+      "sha256": "c0493c578f7baa516c525b71c4c57179472d1b1d1dc5938232d23f58d4dbfb1a"
+    },
+    {
+      "name": "client-58f-environment-query-windows-r2-20261118.json",
+      "sha256": "6eb54855439f45b24f042155ef06764d21ec50878a4fb0e300f5c019b891ab00"
+    },
+    {
+      "name": "client-58f-monument-tier-windows-20261118.json",
+      "sha256": "4a3eeb8f37ae3d23cd797ce3b671656660c144ec1d2b6a3e88431d33ebbf45f4"
+    },
+    {
+      "name": "client-58f-monument-tier-initializer-20261118.json",
+      "sha256": "6fd1db64fe88f6a0f24518424048601846dce4844c3bb2cc4fb30777c4f4cf46"
+    },
+    {
+      "name": "client-58f-boat-costmap-windows-20261118.json",
+      "sha256": "ae2d7ab5c31459957ca54c7e59ee22a12572e14e8b9786ab7fdea6bb314d4410"
+    }
+  ],
+  "reviewed_windows": [
+    {
+      "type": "EnvironmentVolume",
+      "address": "0x1845da200",
+      "bytes": 464,
+      "sha256": "5f088c934f60b866220016c3e9eefa07680461dd2ef87f8ebdcbc7f073d72a8e",
+      "complete": true
+    },
+    {
+      "type": "EnvironmentVolume",
+      "address": "0x1845da990",
+      "bytes": 480,
+      "sha256": "65ff5146ffdc4e6f2d4e566212969817e901d81458539280113d8e2ee823ecf0",
+      "complete": true
+    },
+    {
+      "type": "EnvironmentVolume",
+      "address": "0x1845dcb10",
+      "bytes": 960,
+      "sha256": "060684b8fe069b51f73b36d88bea3dcd894ead00305cc40d43faf9e9a07a5b19",
+      "complete": true
+    },
+    {
+      "type": "EnvironmentVolume",
+      "address": "0x1845dd550",
+      "bytes": 16,
+      "sha256": "91fdd0d0b82602339af72a2ed9c3c6193016631ec2f3dac93931f0b37603b776",
+      "complete": true
+    },
+    {
+      "type": "GenerateDungeonGrid",
+      "address": "0x1832383f0",
+      "bytes": 1376,
+      "sha256": "0781bb2edfac46665191c62e3688a8ee0b19805d6c5cc3fc647fd9113c43508a",
+      "complete": true
+    },
+    {
+      "type": "%5aaba4f80fd68309d1c4281f365959632c5c631c",
+      "address": "0x18494ae80",
+      "bytes": 800,
+      "sha256": "3d9ca496e8e6eb436dc0fdc32556cbb7f14eddd7d91b0c432c2a6adb63694d51",
+      "complete": true
+    },
+    {
+      "type": "EnvironmentManager",
+      "address": "0x1859dfde0",
+      "bytes": 704,
+      "sha256": "42f9bdcc472d0c214f157ba78e8977cdc5ea9545a7884cfc8fb3c923547a874b",
+      "complete": true
+    },
+    {
+      "type": "%604d9fa9ddcd561d984a0db87be387549abd8338",
+      "address": "0x183104ed0",
+      "bytes": 288,
+      "sha256": "7b742ca45ad14102013a02ca286e5392bb7243bb61c70c79fd14b4e6ebd26c26",
+      "complete": true
+    },
+    {
+      "type": "MonumentInfo",
+      "address": "0x18238c790",
+      "bytes": 1184,
+      "sha256": "96813cf224cb8b53a9b6ac63d880d5e579c7304fba221a487571e009da3e4dba",
+      "complete": true
+    },
+    {
+      "type": "PlaceMonuments+%e653599d7e23217083ee4a237fe904c3df5224f7",
+      "address": "0x181201f80",
+      "bytes": 880,
+      "sha256": "b1b1b3c8e23939a03bc0ad49189dc4f27d26907e34d32615ceec27e93a509dcf",
+      "complete": true
+    },
+    {
+      "type": "TerrainPath",
+      "address": "0x18302fcb0",
+      "bytes": 608,
+      "sha256": "5590187e216435132111889f6b3bb4d2961b7426474358e137c8c14b7d402ebd",
+      "complete": true
+    }
+  ],
+  "observations": {
+    "activation": "Awake initializes trigger geometry. OnEnable enables the captured collider. OnDisable disables it.",
+    "query": "Dungeon environment checks reach an overlap query using layer mask 262144, trigger mode Collide (2), and the requested EnvironmentType at byte offset 32. Mask helper clears only bits absent from this input.",
+    "tier": "OBB corner checks map tier bits 1, 2 and 4 to topology bits 26, 27 and 28. Nine static retry rungs begin at three required corners.",
+    "coastal": "Boat infrastructure enum is 5. Placement calls TerrainPath costmap with minimum depth 4. Costmap divides world size by 7.5 and tests cell centers.",
+    "hierarchy": "Selected maps.bundle parses with the existing hierarchy activation adapter, yielding 18 land stages and one offshore stage. Coastal stage filter masks match the preceding source profile.",
+    "topology": "Role names retain the reviewed preceding ABI. Three native kernel cases preserve all terrain buffers exactly and new managed tier checks confirm bits 26 through 28. A complete new literal TerrainTopology enum was not recovered."
+  },
+  "limitations": [
+    "Static code windows and serialized metadata do not establish complete generation or server loading.",
+    "The conservative collider model does not implement all client spatial registration, PhysX or unmodeled providers.",
+    "The additional OnEnable spatial callback was inspected as a bounded native window, without transitive helper execution.",
+    "Mapper coastal search and earthwork budgets are application policies."
+  ],
+  "game_code_executed": false,
+  "physics_executed": false,
+  "complete_generation_validated": false,
+  "server_loading_validated": false,
+  "asset_and_enum_captures": [
+    {
+      "name": "client-58f-monument-capture-20261118/37d81b36e624fd36d63b5dac4a5a43593906c6c93ae516956292a2244819ff7a/monuments.json",
+      "sha256": "37d81b36e624fd36d63b5dac4a5a43593906c6c93ae516956292a2244819ff7a"
+    },
+    {
+      "name": "client-58f-monument-stages-capture-20261118/b801f813d7719ce591b6d34d81b5feb0d50e640b6343b3f34f0593e8fbb82750/stages.json",
+      "sha256": "b801f813d7719ce591b6d34d81b5feb0d50e640b6343b3f34f0593e8fbb82750"
+    },
+    {
+      "name": "client-58f-offshore-stages-capture-20261118.json",
+      "sha256": "bb0d0ed2aef03e3ba964844233f9885e559b939dd5c2c1390b97f0836fdcfdd3"
+    },
+    {
+      "name": "client-58f-scene-program-inventory-20261118.json",
+      "sha256": "0944967a15aa198df8ab866d3135d3fcb1220c72eed66d5d2ef62697b48df047"
+    },
+    {
+      "name": "client-58f-generation-enums-20261118.json",
+      "sha256": "89978e894bc9e1ec90d217a13dbe49230da54ac73951fbe71b71afdab5928fe2"
+    }
+  ],
+  "inspection_tool_sources": [
+    {
+      "path": "tools/Mapper.ClientReference/EnvironmentReference.cs",
+      "sha256": "93c229ef03edfb25ea51e34a3ee694cf6f2492f8941804a667d0dba2dccb3e85"
+    },
+    {
+      "path": "tools/Mapper.ClientReference/Program.cs",
+      "sha256": "7112ad75681a8dac597ec88d93f7d752ae0da7af5dfc64dfa47e229b4bffe556"
+    },
+    {
+      "path": "tools/Mapper.ClientReference/StaticFieldReference.cs",
+      "sha256": "3d9228ffb5ce8647012f339fd2039ccd7ed582d1936644be21624f1ec8e8e82a"
+    }
+  ],
+  "source_profile_hash_scope": "The original sha256 records capture-time bytes. LF and CRLF digests identify the same reviewed embedded profile."
+}

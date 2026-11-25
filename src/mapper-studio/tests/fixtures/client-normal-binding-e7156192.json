@@ -1,0 +1,52 @@
+{
+  "format": "mapper-owned-client-normal-binding-evidence",
+  "schema": 1,
+  "game_assembly_sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+  "metadata_sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+  "probe_source_sha256": "d36c034091906861ea82fe068178314590ddd8920aefb6c083cbbeccaf2ec651",
+  "normalized_binding_listing_sha256": "1e6c0c85471149f8ec9869da76be7eb60b56ad879576e9234d149e3f947b2740",
+  "binding_candidate_count": 7,
+  "active_binder": "0x18157D410",
+  "source_call_edges": [
+    [
+      "WorldSetup.Awake",
+      "0x184878820",
+      "0x18157D410"
+    ],
+    [
+      "WorldSetup.InitCoroutine.MoveNext",
+      "0x1848AED10",
+      "0x18157D410"
+    ]
+  ],
+  "normal_assignment": {
+    "property": "Terrain_Normal",
+    "name_helper": "0x186666790",
+    "height_map_getter": "0x1810F7FC0",
+    "normal_texture_offset": "0x70",
+    "assignment_call": "0x18157E2F3",
+    "set_global_texture": "0x18E496200"
+  },
+  "name_reconstruction": {
+    "metadata_literal_address": "0x19128DC58",
+    "seed": "0x1ade89b3",
+    "multiplier": "0x2ddfc455",
+    "increment": "0x0c27d771",
+    "state_bits": 32,
+    "key_byte_shift": 8,
+    "operation": "XOR low byte of each UTF-16 code unit, then UTF-8 decode",
+    "game_helper_executed": false
+  },
+  "shader_binding": {
+    "shader_name": "Custom/Map",
+    "name_index": 12,
+    "texture_register": "t6",
+    "paper_program_sha256": "b48a03a5b8b079f0fbc660e098a6430ac31ed25f1c4659d96ada88cb94a924d8"
+  },
+  "normalized_repeat_equal": true,
+  "raw_client_texture_captured": false,
+  "live_runtime_binding_captured": false,
+  "game_code_executed": false,
+  "world_generated": false,
+  "scope": "Static normal-texture binding from owned WorldSetup call sites and owned shader metadata, not live texture capture or compressor parity."
+}

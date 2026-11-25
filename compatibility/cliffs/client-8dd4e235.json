@@ -1,0 +1,66 @@
+{
+  "format": "papyrus-uniform-cliff-profile",
+  "schema": 1,
+  "id": "client-8dd4e235-uniform-cliffs-1",
+  "native_sha256": "8dd4e23570729ddbd72844bdb8a5e04bfa671612b3e7d34841d17d2353f7015c",
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "199a470f2510320be42d127cc55e946f51a2fc0b0b3ed0bf8671c2a8bb73b252",
+      "bytes": 270636368
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "266b023e647e1fcedd7c4590ea110d5131bbb070bf23f3c42fb33f935cc9750a",
+      "bytes": 68754532
+    }
+  ],
+  "process_sha256": "c878224b10884766757bcb1770d27b8b87f7d348ccc3e2bde1cbf744ad827869",
+  "material_apply_sha256": "02355363216a988a6c6281401c000527f6b88883ccc4e732945483a99859fdb2",
+  "material_remove_sha256": "8ede0a427897109c54508da1ba9aceeb8351c0b925edfbfa7024ceddbc10c6aa",
+  "material_callback_sha256": "6eb3fbc87895da1dc6e7f4bb0ac9a932550ac3a79819dcde3a4ae2675bf28113",
+  "topology_flags": {
+    "Field": 1,
+    "Cliff": 2,
+    "Summit": 4,
+    "Beachside": 8,
+    "Beach": 16,
+    "Forest": 32,
+    "Forestside": 64,
+    "Ocean": 128,
+    "Oceanside": 256,
+    "Decor": 512,
+    "Monument": 1024,
+    "Road": 2048,
+    "Roadside": 4096,
+    "Swamp": 8192,
+    "River": 16384,
+    "Riverside": 32768,
+    "Lake": 65536,
+    "Lakeside": 131072,
+    "Offshore": 262144,
+    "Rail": 524288,
+    "Railside": 1048576,
+    "Building": 2097152,
+    "Cliffside": 4194304,
+    "Mountain": 8388608,
+    "Clutter": 16777216,
+    "Alt": 33554432,
+    "Tier0": 67108864,
+    "Tier1": 134217728,
+    "Tier2": 268435456,
+    "Mainland": 536870912,
+    "Hilltop": 1073741824
+  },
+  "collider_backfaces": false,
+  "material_removal": {
+    "replacement_channels": [
+      2,
+      4,
+      4,
+      1,
+      0
+    ],
+    "excluded_topology": 2097152
+  }
+}

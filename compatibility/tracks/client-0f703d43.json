@@ -1,0 +1,38 @@
+{
+  "format": "papyrus-authored-track-profile",
+  "schema": 1,
+  "id": "client-0f703d43-authored-tracks-2",
+  "layout": "papyrus-world-spline-shared-binary-1",
+  "native_sha256": "0f703d43b57672b8bb3dfd29bab0d484f8622fbac66dee7f1f058893ef22a99c",
+  "scene_sha256": "dfed19615a919bc4f58e8675e632a172f5f1488ddf7cb60a49601081c3b6eeb4",
+  "reference_gameplay_sha256": "bd19c4ac705edd18ff556f5dbb3130e098b380577cc2ab0d73a2ec89ee289cc9",
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+      "bytes": 304039424
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+      "bytes": 68271512
+    }
+  ],
+  "resources": [
+    {
+      "relative_path": "RustClient_Data/resources.assets",
+      "sha256": "6273251492282cc97a259048b552747628ce04c3dc5b926910cb9dde36b53243",
+      "bytes": 6357608
+    },
+    {
+      "relative_path": "RustClient_Data/sharedassets0.assets",
+      "sha256": "471799f9d30a09386113964d6893eef0284dad46a2510eb51f15cbfb22f125e3",
+      "bytes": 49322320
+    }
+  ],
+  "connections": {
+    "engine": "papyrus-track-endpoint-graph-1",
+    "maximum_distance_squared": 0.010000001,
+    "maximum_angle_degrees": 10.0
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "format": "papyrus-client-water-placement-static-evidence",
+  "schema": 1,
+  "profile": "client-e7156192-water-placement-1",
+  "profile_file_sha256": "0de12c6849a7be7364aefd5d5fffff1486240306e7d8528e3175a90fe63bd8c3",
+  "sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+      "bytes": 304039424
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+      "bytes": 68271512
+    }
+  ],
+  "enum_roles": {
+    "Ocean": 1,
+    "River": 2,
+    "Lake": 4,
+    "Pool": 8,
+    "Moonpool": 16,
+    "Radioactive": 32
+  },
+  "reviewed_method_windows": [
+    {
+      "address": "0x184564dc0",
+      "bytes": 1776,
+      "sha256": "0e81298d82a058c077d65f845dae012c010a9875b5034ba58962b274a2f4437b"
+    },
+    {
+      "address": "0x185190b40",
+      "bytes": 512,
+      "sha256": "b068210b4aebb6ef5f79e750b6e06d92794a40c9b2bb3ae15c5329ac039baf0d"
+    }
+  ],
+  "entrypoint": "0x181620350",
+  "placement_method": "0x184564dc0",
+  "selection_helper": "0x187f23540",
+  "minimum_method": "0x185190b40",
+  "type_field_offset": 32,
+  "triggers_field_offset": 48,
+  "include_inactive": false,
+  "minimum_world_water_level": 1.0,
+  "capture_sha256": {
+    "client-water-types-20261106.json": "3bd85cd27098ceac2238834cd60ccbff6fe4ab934c1adcc2cb10ae0ecfa8b898",
+    "client-water-method-evidence-20261106.json": "e201b96cc4c084079cd89658a388fd206b732ae79e426eb37d2130fc1f44fae8",
+    "client-offshore-placement-active-20261106.log": "1478883d41fe38815cfbfe31d3f847733e110c1b6953c94c4560536260eb3d0f",
+    "client-water-placement-callees-20261106.log": "abaecb6aa1bbeaa21e059b6cd31131b496a3a3ffbcbdb158f8680f625f6750ca",
+    "client-water-types-inheritance-20261106.json": "612d7ad98037936916e4053097317e2b644af7258cd2dff3e64f6d3e3c202811"
+  },
+  "game_code_executed": false,
+  "physics_executed": false,
+  "preprocessing_equivalence_established": false,
+  "world_coverage_certified": false,
+  "scope": "Reviewed selected-client water branch and numeric minimum program. Lookup/preprocessing frames and runtime collider bounds remain producer facts; no full placement or live Unity parity claim.",
+  "water_body_inheritance": {
+    "root": "WaterBody",
+    "type_count": 32118,
+    "direct_subclasses": [],
+    "unresolved_parent_types": [],
+    "complete": true
+  }
+}

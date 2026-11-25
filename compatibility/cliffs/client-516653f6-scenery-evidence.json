@@ -1,0 +1,217 @@
+{
+  "format": "papyrus-client-scenery-static-evidence",
+  "schema": 1,
+  "unity_version": "6000.3.28x1",
+  "metadata_version": 39,
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "bytes": 270462288,
+      "sha256": "516653f622c05ed95d6667ebda0f68321f2f10ea755feab929cfb6897d08c1fd"
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 68769640,
+      "sha256": "d3380cd4e62412f01ba99825204bee3f33fa238e4ac0ec4b98c8a1873a133632"
+    }
+  ],
+  "profiles": [
+    {
+      "path": "compatibility/road-objects/client-58f3263f.json",
+      "lf_sha256": "15458916b1854ba8c272c0f89a59c433f98fc58623bea164047a402ce69fe62d",
+      "crlf_sha256": "161777771ee4c93a1db46627d73fd7a78a9925b77b464eb926255d78c000bfc2"
+    },
+    {
+      "path": "compatibility/cliffs/client-58f3263f.json",
+      "lf_sha256": "2b7c9b162a259f8fcf1354accfdda0caa31d996f24fe948fb4bd8e01ac3f28d1",
+      "crlf_sha256": "f9d336720c73d14cb6a4444262c9ceff14baa9e53136ebbbcef3f157cdeb5d8c"
+    },
+    {
+      "path": "compatibility/cliffs/client-58f3263f-coastal.json",
+      "lf_sha256": "9eb6082271a88b3251692952cf136a9a7dbf0ce3213edf9cdc6b550cd0ee81c9",
+      "crlf_sha256": "24f047c4132367abca787d7c9a068ca212e11872efd5fcbf2281c33e4a8d9495"
+    },
+    {
+      "path": "compatibility/vines/client-58f3263f.json",
+      "lf_sha256": "061d2c610bbadf973d1f39af62d901d7ae2f4b612fa03a741eda386dc4f0c9e5",
+      "crlf_sha256": "761f74dce865f4c165263bfbbbaa859e75b29bd9b745b32499cc43265265385c"
+    },
+    {
+      "path": "compatibility/dungeons/client-58f3263f.json",
+      "lf_sha256": "1b3bb46cde85f4deb8c1f7dde454b594a24292e93bb5691b914275091927518b",
+      "crlf_sha256": "de0ccb356923d99d03acf4b4dcb51fdd5d12c8dcb25bf1dca0304758ac52f3b1"
+    },
+    {
+      "path": "compatibility/offshore/client-58f3263f.json",
+      "lf_sha256": "0ff9ca3f3531350614aef3cdcb66c15e25142628a845871a6eddef4329e501a9",
+      "crlf_sha256": "39049701a098934c68bc229a29010b8ce355b4a847c4fc5e21d89cc8c0791046"
+    }
+  ],
+  "reviewed_windows": [
+    {
+      "type": "PlaceRoadObjects",
+      "address": "0x182239850",
+      "bytes": 1024,
+      "sha256": "f169047de221e48a1bfc4c7c52e3490423406c8acdb234a8f61ce26ef2968a7d",
+      "truncated": false,
+      "capture": "client-58f-object-family-windows-20261118.json"
+    },
+    {
+      "type": "PlaceRiverObjects",
+      "address": "0x1858cb980",
+      "bytes": 1104,
+      "sha256": "19adf9cffb0549ec5b21213e82ce7f02a091bda57326c452c5f4bf9e3a47707b",
+      "truncated": false,
+      "capture": "client-58f-object-family-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182a9a240",
+      "bytes": 544,
+      "sha256": "00f1bbf26fa96bfb8c1c6e0fb844a94190091a5f2422cd65fbe0ad492d49e863",
+      "truncated": false,
+      "capture": "client-58f-object-focused-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182a9a680",
+      "bytes": 2656,
+      "sha256": "1bee97b069471828b24207dcd09a9b34ac80220cdaed95f2b246408b8574243d",
+      "truncated": false,
+      "capture": "client-58f-object-focused-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182aa1ae0",
+      "bytes": 416,
+      "sha256": "4a6553583f65452090fd21c003c67420dc4a0469c4b6088d980519ce941fb365",
+      "truncated": false,
+      "capture": "client-58f-object-focused-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182aa3080",
+      "bytes": 448,
+      "sha256": "d213a5c80b596d856edd0f886a69b0db5f455a04f4877032419b134890d000c0",
+      "truncated": false,
+      "capture": "client-58f-object-focused-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182aaa010",
+      "bytes": 512,
+      "sha256": "36d5da1e2a539da6ee55bd5acb1da5fad0db0cdbb790d78281d2c9e79c5eddad",
+      "truncated": false,
+      "capture": "client-58f-object-focused-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182aaacf0",
+      "bytes": 64,
+      "sha256": "41ffb34839d8dddf63b2d336228f01f4bc9b9d6fda98be07199c994121621fbd",
+      "truncated": false,
+      "capture": "client-58f-object-focused-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182aaf7b0",
+      "bytes": 2032,
+      "sha256": "daa279aefba9f3a9c804d9b4c075e2e73d87c39e504ca253bd9de343c7d9b3cd",
+      "truncated": false,
+      "capture": "client-58f-object-focused-windows-20261118.json"
+    },
+    {
+      "type": "PlaceDecorUniform",
+      "address": "0x181024b80",
+      "bytes": 2400,
+      "sha256": "3b9aa333a7237d939efef15a8a93ab8b9413d54de32d57edeb6e5f0883e790c7",
+      "truncated": false,
+      "capture": "client-58f-decor-family-windows-20261118.json"
+    },
+    {
+      "type": "PlaceDecorWhiteNoise",
+      "address": "0x1836f6ac0",
+      "bytes": 2192,
+      "sha256": "fe186b08ad2b59dc97da91cf8a5d41d4c8277911660c817409965d2872d2f694",
+      "truncated": false,
+      "capture": "client-58f-decor-family-windows-20261118.json"
+    },
+    {
+      "type": "PlaceDecorValueNoise",
+      "address": "0x182edce40",
+      "bytes": 2544,
+      "sha256": "06e1ea1c2d0ad7f5d2d904c5287e684c5e67326e71e71638c622011067627857",
+      "truncated": false,
+      "capture": "client-58f-decor-family-windows-20261118.json"
+    },
+    {
+      "type": "PlaceCliffsUniform",
+      "address": "0x18576f980",
+      "bytes": 2624,
+      "sha256": "1a3599a8428075c354db6b4338fcf4c48e646388673c4629773b7dc3ce52ac31",
+      "truncated": false,
+      "capture": "client-58f-cliff-family-windows-20261118.json"
+    },
+    {
+      "type": "PlaceJungleVines",
+      "address": "0x18253b070",
+      "bytes": 144,
+      "sha256": "e88626713ca7916f281615c2aad5b12aca538aa5dcbdad6951cc506056b24921",
+      "truncated": false,
+      "capture": "client-58f-cliff-family-windows-20261118.json"
+    },
+    {
+      "type": "PlaceCliffs",
+      "address": "0x184baf500",
+      "bytes": 4640,
+      "sha256": "beaa21ce3b49df1e6627f8bdced256ea204babf9bf0bc3a6f8619870dff770d2",
+      "truncated": false,
+      "capture": "client-58f-coastal-cliff-focused-windows-20261118.json"
+    },
+    {
+      "type": "TerrainSplatRemove",
+      "address": "0x1841a42f0",
+      "bytes": 320,
+      "sha256": "875da9cf549026b4ead293ab43d77bc8e8988b412d05e20c0821743b85d29b1b",
+      "truncated": false,
+      "capture": "client-58f-cliff-material-family-windows-20261118.json"
+    },
+    {
+      "type": "TerrainSplatMap+<>c__DisplayClass38_0",
+      "address": "0x18588b160",
+      "bytes": 336,
+      "sha256": "07231e9439eeafd6081e4b62102e95ee8c8a1a0647bc45350a9e2472f481ee0a",
+      "truncated": false,
+      "capture": "client-58f-cliff-material-family-windows-20261118.json"
+    },
+    {
+      "type": "TerrainSplatMap",
+      "address": "0x18586cbf0",
+      "bytes": 464,
+      "sha256": "2f7909922c03446879bd2fda803a04499df566b7ecedb8023d49f2a0be4af7c2",
+      "truncated": false,
+      "capture": "client-58f-cliff-material-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateDungeonBase",
+      "address": "0x181f8f440",
+      "bytes": 3168,
+      "sha256": "0633e30c22341350b0abde4cde960f444c12a72e225ea4ab462c170c9cf7df21",
+      "truncated": false,
+      "capture": "client-58f-dungeon-family-windows-20261118.json"
+    }
+  ],
+  "findings": [
+    "Selected-client road and river object placement retains quarter-unit search steps and half-unit endpoint inset.",
+    "TerrainSplatRemove.Apply excludes Mountain topology 8388608. The preceding versioned Mapper profiles use Building 2097152. New profiles select the reviewed Mountain role.",
+    "The material callback transfers opacity between source and biome-selected replacement channels, with source float-byte quantization.",
+    "GenerateDungeonBase selects UnderwaterLab environment 64. Socket roles are Horizontal 0, Vertical 1, Pillar 2. Link roles are Room 0, Corridor 1, End 2.",
+    "Coastal cliff chain and repeat fitting were followed through direct calls. Jungle vines use the uniform placement branch when the reviewed static initializer enables its flag."
+  ],
+  "scope": {
+    "game_code_executed": false,
+    "server_loading_validated": false,
+    "official_seed_parity_claimed": false,
+    "static_windows_are_runtime_validation": false
+  }
+}

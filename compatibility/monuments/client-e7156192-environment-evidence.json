@@ -1,0 +1,75 @@
+{
+  "format": "papyrus-client-environment-static-evidence",
+  "schema": 1,
+  "profile": "client-e7156192-environment-1",
+  "profile_file_sha256": "c2274bb37169fd3be76f33e0e068c076695354fa0767b04b9906962855d50a1a",
+  "probe_source_sha256": "d87631f1a227d8f0f12b898a56bfb4ecabacafa7f321dfd780f90f7a0db79cf4",
+  "probe_project_sha256": "6417a621582d2ae3c7825d061c95860dd8616005f5c32b9eba6959712d563507",
+  "normalized_inventory_and_chain_sha256": "c688912f678e0de1344e59d6442fa990b334f3ccb8ec9fa77fa0fa3483f243f3",
+  "entrypoint": {
+    "declaring_type": "PlaceMonumentsOffshore",
+    "base_type": "ProceduralComponent",
+    "abstract_parameter": "System.UInt32",
+    "virtual_slot": 14,
+    "address": "0x181620350"
+  },
+  "direct_call_edges": [
+    [
+      "0x181620350",
+      "0x186FAD3B0"
+    ],
+    [
+      "0x186FAD3B0",
+      "0x1811A0D80"
+    ],
+    [
+      "0x1811A0D80",
+      "0x1841DD9A0"
+    ],
+    [
+      "0x181620350",
+      "0x182B979C0"
+    ],
+    [
+      "0x182B979C0",
+      "0x1841DD9A0"
+    ],
+    [
+      "0x1841DD9A0",
+      "0x18191BAD0"
+    ]
+  ],
+  "environment_query": {
+    "layer_mask": 262144,
+    "trigger_enum": "Collide",
+    "trigger_value": 2,
+    "query_mask_unchanged_by_helper": true,
+    "ignored_mask_bits": [
+      23,
+      4
+    ],
+    "forbidden_offshore_type_mask": 33,
+    "native_query": "UnityEngine.PhysicsScene::OverlapBoxNonAlloc_Internal_Injected"
+  },
+  "lifecycle": {
+    "awake": "0x18680F270",
+    "update_trigger": "0x18680BB50",
+    "enable": "0x18680D460",
+    "disable": "0x18680CC70",
+    "creates_box_only_without_existing_collider": true,
+    "existing_box_gets_authored_center_size": true,
+    "enable_sets_existing_trigger_enabled": true,
+    "disable_sets_existing_trigger_disabled": true,
+    "additional_client_spatial_registry_modeled": false
+  },
+  "game_code_executed": false,
+  "physx_executed": false,
+  "world_coverage_certified": false,
+  "offshore_generation_enabled": false,
+  "scope": "Static source verification of collider activation and physics-query mask/trigger subset only. Geometry, cooking, runtime mutation and complete stage-owned coverage remain separate.",
+  "normalized_profile_sha256": "677661574e91d27283d05abc7c1dfaea874bd04afa5c596923577f5308363216",
+  "owned_files_verified": true,
+  "dedicated_server_legacy_fingerprint_preserved": true,
+  "prefab_snapshot_revalidated": false,
+  "repeated_capture_identical": true
+}

@@ -1,0 +1,51 @@
+{
+  "format": "mapper-owned-client-surface-binding",
+  "schema": 1,
+  "profile": "mapper-client-coarse-surface-e7156192-1",
+  "game_assembly_sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+  "metadata_sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+  "native_sha256": "0f703d43b57672b8bb3dfd29bab0d484f8622fbac66dee7f1f058893ef22a99c",
+  "maps_sha256": "50d7c807360ad98b18b91588aafbec2a9d5bc7c2102cc90d4b250a63dc209a63",
+  "content_sha256": "edc7d5d1dfa894a832e57620b4c0000ad01c0f6852bcea14b5dcde5417e3e5a0",
+  "paper_shader_blob_sha256": "9ff936729f90baad098b7a69f0a3244868345f99e3a2542e00063cc004821e07",
+  "paper_program_sha256": "b48a03a5b8b079f0fbc660e098a6430ac31ed25f1c4659d96ada88cb94a924d8",
+  "final_target": {
+    "helper": "0x187020670",
+    "format": 13,
+    "read_write": 1,
+    "filter_mode": 2,
+    "wrap_mode": 1,
+    "use_mip_map": true,
+    "auto_generate_mips": true
+  },
+  "raw_texture": {
+    "helper": "0x1870447F0",
+    "filter_mode": 2,
+    "wrap_mode": 1,
+    "anisotropy": 1
+  },
+  "enum_values": {
+    "FilterMode.Point": 0,
+    "FilterMode.Bilinear": 1,
+    "FilterMode.Trilinear": 2,
+    "TextureWrapMode.Repeat": 0,
+    "TextureWrapMode.Clamp": 1,
+    "TextureWrapMode.Mirror": 2,
+    "TextureWrapMode.MirrorOnce": 3
+  },
+  "surface_consumer": {
+    "texture_register": "t4",
+    "sampler_register": "s0",
+    "instruction": "sample_l_indexable",
+    "explicit_lod": 0
+  },
+  "probe_source_sha256": "f189a8f3937ce7290a6d08644a7abfc61de8a77a85ac14764b33708fb6a42d07",
+  "probe_project_sha256": "6417a621582d2ae3c7825d061c95860dd8616005f5c32b9eba6959712d563507",
+  "normalized_helper_listing_sha256": "328c5204439b369187defb8cab68bf658681dafb8ca6d5623730e292c890a77d",
+  "consumer_listing_sha256": "80b2de26eab259de49e0783eca439afe2023816297e9f2c9bab737d09daa0323",
+  "runtime_unity_temporary_pool_captured": false,
+  "raw_producer_runtime_captured": false,
+  "game_world_launched": false,
+  "scope": "Static source binding and explicit mip-zero consumer; blur half-word conformance remains the controlled WARP fixture. This is not full client texture/runtime parity.",
+  "probe_source_text_normalization": "UTF-8 LF, matching repository attributes"
+}

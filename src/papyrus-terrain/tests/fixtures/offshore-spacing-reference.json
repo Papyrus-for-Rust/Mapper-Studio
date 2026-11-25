@@ -1,0 +1,134 @@
+{
+  "format": "papyrus-owned-offshore-spacing-reference",
+  "schema": 1,
+  "sources": {
+    "Assembly-CSharp.dll": "bd19c4ac705edd18ff556f5dbb3130e098b380577cc2ab0d73a2ec89ee289cc9",
+    "UnityEngine.CoreModule.dll": "9bf9488b3f60fec06c45ff049ebb489e40e4d401565ff92237c411e2b8ae19b2"
+  },
+  "gameProcessStarted": false,
+  "nativeLibraryLoaded": false,
+  "rows": [
+    {
+      "point": [
+        0,
+        0,
+        0
+      ],
+      "placed": [],
+      "radius": 500,
+      "overlaps": false
+    },
+    {
+      "point": [
+        3,
+        4,
+        0
+      ],
+      "placed": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "radius": 5,
+      "overlaps": false
+    },
+    {
+      "point": [
+        3,
+        4,
+        0
+      ],
+      "placed": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "radius": 5.000001,
+      "overlaps": true
+    },
+    {
+      "point": [
+        0,
+        0,
+        0
+      ],
+      "placed": [
+        [
+          0,
+          1000,
+          0
+        ]
+      ],
+      "radius": 500,
+      "overlaps": false
+    },
+    {
+      "point": [
+        0,
+        0,
+        0
+      ],
+      "placed": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "radius": 0,
+      "overlaps": false
+    },
+    {
+      "point": [
+        0,
+        0,
+        0
+      ],
+      "placed": [
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "radius": 1,
+      "overlaps": true
+    },
+    {
+      "point": [
+        -2300,
+        -40,
+        1800
+      ],
+      "placed": [
+        [
+          -2300,
+          0,
+          1800
+        ]
+      ],
+      "radius": 40,
+      "overlaps": false
+    },
+    {
+      "point": [
+        -2300,
+        -40,
+        1800
+      ],
+      "placed": [
+        [
+          -2300,
+          0,
+          1800
+        ]
+      ],
+      "radius": 40.001,
+      "overlaps": true
+    }
+  ]
+}

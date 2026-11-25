@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "output": 16,
+  "nodes": [
+    {"id": 1, "op": {"kind": "box_distance", "center": [0, 0], "half_size": [745, 540], "rotation": 18}},
+    {"id": 2, "op": {"kind": "offset_distance", "distance": 1, "metres": 300}},
+    {"id": 3, "op": {"kind": "circle_distance", "center": [50, 40], "radius": 500}},
+    {"id": 4, "op": {"kind": "capsule_distance", "start": [260, 220], "end": [1100, 1250], "radius": 145}},
+    {"id": 5, "op": {"kind": "combine_distance", "left": 3, "right": 4, "mode": "union", "smoothing": 140}},
+    {"id": 6, "op": {"kind": "combine_distance", "left": 2, "right": 5, "mode": "subtract", "smoothing": 120}},
+    {"id": 7, "op": {"kind": "distance_mask", "distance": 6, "feather": 170}},
+    {"id": 8, "op": {"kind": "height", "metres": -24}},
+    {"id": 9, "op": {"kind": "height", "metres": 28}},
+    {"id": 10, "op": {"kind": "blend", "low": 8, "high": 9, "mask": 7}},
+    {"id": 11, "op": {"kind": "offset_distance", "distance": 6, "metres": -85}},
+    {"id": 12, "op": {"kind": "distance_mask", "distance": 11, "feather": 130}},
+    {"id": 13, "op": {"kind": "noise", "wavelength": 275, "octaves": 3, "persistence": 0.55, "mode": "ridged"}},
+    {"id": 14, "op": {"kind": "remap", "input": 13, "low": 0.37, "high": 0.92}},
+    {"id": 15, "op": {"kind": "combine", "left": 12, "right": 14, "mode": "multiply"}},
+    {"id": 16, "op": {"kind": "raise", "height": 10, "mask": 15, "metres": 42}}
+  ]
+}

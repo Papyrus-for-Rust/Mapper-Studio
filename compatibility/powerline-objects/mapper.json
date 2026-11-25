@@ -1,0 +1,27 @@
+{
+  "format": "mapper-powerline-object-policy",
+  "schema": 1,
+  "policy": {
+    "engine": "papyrus-road-object-fit-1",
+    "maximum_hierarchy_exclusive": 2,
+    "sample_step_fraction": 0.25,
+    "endpoint_inset_fraction": 0.5,
+    "trim_fraction": 0.25,
+    "endpoint_offsets": [
+      0.0,
+      -1.0,
+      1.0
+    ],
+    "anchor_mode": 0,
+    "check_anchor_filter": true,
+    "seed_domain": "mapper-powerline-objects-1",
+    "powerline_sequence": {
+      "engine": "papyrus-powerline-sequence-1",
+      "regular_spacing": 2
+    },
+    "resource_weights": {
+      "engine": "papyrus-path-resource-weights-1",
+      "maximum_tickets": 1000000
+    }
+  }
+}

@@ -1,0 +1,207 @@
+{
+  "format": "papyrus-client-prefab-spawn-static-evidence",
+  "schema": 1,
+  "sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+      "bytes": 304039424
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+      "bytes": 68271512
+    }
+  ],
+  "reviewed_method_windows": [
+    {
+      "address": "0x181620350",
+      "bytes": 4496,
+      "sha256": "46606859de3e90a77522f20a973a26f1bcac79a028e4f3577972025b9605ee4e"
+    },
+    {
+      "address": "0x186d74b60",
+      "bytes": 624,
+      "sha256": "bfa9bf2d4af818f5017617db5ba0c768afd78868944ab357a674545da8e807a0"
+    },
+    {
+      "address": "0x186d62490",
+      "bytes": 1392,
+      "sha256": "a6cf841fa79ecee5413d9b29f40c988f4d7744ea8161ebd449e719c4ac103374"
+    },
+    {
+      "address": "0x182418cc0",
+      "bytes": 480,
+      "sha256": "bb2fe14c68f6d8638bafcabffc3bc016defe68b36f20c43471e57010e3e2dc31"
+    },
+    {
+      "address": "0x182baa600",
+      "bytes": 256,
+      "sha256": "5e57bfe4d9621e7bad92e4393325bfd1ef43154a88bb3603c1b43e8ba90a021b"
+    },
+    {
+      "address": "0x181373210",
+      "bytes": 1184,
+      "sha256": "cec7897867e125473ce9604e458f3baca81d32952247d9baf64424bb56fe05e3"
+    },
+    {
+      "address": "0x181f4fd40",
+      "bytes": 336,
+      "sha256": "f43204e6bd47073b07d7edc3962c2d7e0f2244df42dc35c4d5f21e922cdf34ef"
+    },
+    {
+      "address": "0x1812c3070",
+      "bytes": 288,
+      "sha256": "140eb7c19c90d4f9425b098dca1ad7572d087252c8a8e15b259d759a2d8cc691"
+    }
+  ],
+  "observations": [
+    {
+      "site": "0x18162141a",
+      "target": "0x186d74b60",
+      "observation": "Offshore winners call the serialized-record and spawning handoff"
+    },
+    {
+      "site": "0x186d74c5b",
+      "target": "0x180af24a0",
+      "observation": "Quaternion.eulerAngles called before record insertion"
+    },
+    {
+      "site": "0x186d74cb7",
+      "target": null,
+      "observation": "Appends record before the whole-world cache-state branch"
+    },
+    {
+      "site": "0x186d74cbc",
+      "target": "0x1812c3070",
+      "observation": "Cache-state accessor reads nested static byte at offset 0x88"
+    },
+    {
+      "site": "0x186d74cc3",
+      "target": null,
+      "observation": "Nonzero cached state skips rotation reconstruction and spawning"
+    },
+    {
+      "site": "0x186d74cc9",
+      "target": null,
+      "observation": "Fresh branch converts original quaternion to Euler again"
+    },
+    {
+      "site": "0x186d74d1e",
+      "target": null,
+      "observation": "Resolves UnityEngine.Quaternion.Internal_FromEulerRad_Injected"
+    },
+    {
+      "site": "0x186d74d8e",
+      "target": null,
+      "observation": "Writes reconstructed quaternion to caller rotation storage"
+    },
+    {
+      "site": "0x186d74d9c",
+      "target": "0x186d62490",
+      "observation": "Calls spawn dispatcher with reconstructed rotation"
+    },
+    {
+      "site": "0x186d62698",
+      "target": "0x186fa4700",
+      "observation": "First prefab terrain-effect call in fresh branch"
+    },
+    {
+      "site": "0x186d626db",
+      "target": "0x186fad170",
+      "observation": "Second prefab terrain-effect call in fresh branch"
+    },
+    {
+      "site": "0x186d62706",
+      "target": null,
+      "observation": "Conditional setting precedes WorldGrid singleton and prefab component checks"
+    },
+    {
+      "site": "0x186d627bb",
+      "target": "0x181373210",
+      "observation": "Eligible branch dispatches through WorldGrid"
+    },
+    {
+      "site": "0x186d6281e",
+      "target": "0x182418cc0",
+      "observation": "Fallback directly creates prefab with active argument true"
+    },
+    {
+      "site": "0x186d6282c",
+      "target": "0x186d75770",
+      "observation": "Direct branch tracks returned instance"
+    },
+    {
+      "site": "0x182418d28",
+      "target": "0x182410bf0",
+      "observation": "Instantiation precedes local scale assignment"
+    },
+    {
+      "site": "0x182418e4a",
+      "target": null,
+      "observation": "Calls Transform.set_localScale native function"
+    },
+    {
+      "site": "0x182418e5b",
+      "target": "0x182baa600",
+      "observation": "Active argument gates enabling helper after scale assignment"
+    },
+    {
+      "site": "0x182baa68d",
+      "target": null,
+      "observation": "Native activeSelf result selects activation path"
+    },
+    {
+      "site": "0x182baa6a5",
+      "target": "0x18e4ec070",
+      "observation": "Inactive root path passes true to GameObject activation"
+    },
+    {
+      "site": "0x182baa6cd",
+      "target": "0x1856aca70",
+      "observation": "Already-active root path passes true to Poolable helper"
+    },
+    {
+      "site": "0x18137355a",
+      "target": "0x181f4fd40",
+      "observation": "Adds prefab and transform record to selected grid cell"
+    },
+    {
+      "site": "0x181f4fe75",
+      "target": null,
+      "observation": "Cell helper appends allocated record to a list and returns it"
+    },
+    {
+      "site": "0x181373562",
+      "target": null,
+      "observation": "Further fresh-world branch follows cell registration"
+    },
+    {
+      "site": "0x1813735a7",
+      "target": null,
+      "observation": "Further branch queries child ProceduralObject with includeInactive false"
+    },
+    {
+      "site": "0x181373661",
+      "target": "0x181f52760",
+      "observation": "Further handling is conditional on child lookup"
+    }
+  ],
+  "capture": {
+    "path": "artifacts/verification/client-offshore-spawn-chain-20261107.log",
+    "sha256": "8e36036f348456e8871b768a638c50b0e4d7ca2e4b8ad630a4692af1628115a2",
+    "normalization": "UTF-8 without BOM, LF"
+  },
+  "managed_reference": "Owned dedicated World.AddPrefab, World.SpawnPrefab, GameManager.CreatePrefab and PoolableEx.AwakeFromInstantiate reviewed for comparison. They do not establish selected-client branch equivalence.",
+  "remaining": [
+    "Resolve WorldGrid setting and eligibility component identity",
+    "Model WorldGrid cell and ProceduralObject lifecycles",
+    "Verify terrain-effect callees and preprocessing equivalence",
+    "Implement source-bound Euler and instance-frame adapter",
+    "Integrate full environment provider roster before desktop publication"
+  ],
+  "game_code_executed": false,
+  "physics_executed": false,
+  "spawn_frames_verified": false,
+  "world_coverage_certified": false
+}

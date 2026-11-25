@@ -1,0 +1,10 @@
+{
+  "format": "papyrus-water-placement-runtime-profile",
+  "schema": 1,
+  "id": "client-e7156192-water-placement-1",
+  "environment_runtime_sha256": "677661574e91d27283d05abc7c1dfaea874bd04afa5c596923577f5308363216",
+  "native_sha256": "0f703d43b57672b8bb3dfd29bab0d484f8622fbac66dee7f1f058893ef22a99c",
+  "program": "first-child-lake-minimum-1",
+  "lake_type": 4,
+  "include_inactive": false
+}

@@ -1,0 +1,24 @@
+{
+  "format": "papyrus-environment-runtime-profile",
+  "schema": 1,
+  "id": "server-bd19c4ac-environment-1",
+  "native": {
+    "relative_path": "RustDedicated_Data/Plugins/x86_64/RustNative.dll",
+    "bytes": 1615184,
+    "sha256": "abe4c229e544e86516b242f0ec5b0b7bdb267869e419ccb7ae3ff9bc7e48bf2b"
+  },
+  "code_sources": [
+    {
+      "relative_path": "RustDedicated_Data/Managed/Assembly-CSharp.dll",
+      "bytes": 9593680,
+      "sha256": "bd19c4ac705edd18ff556f5dbb3130e098b380577cc2ab0d73a2ec89ee289cc9"
+    },
+    {
+      "relative_path": "RustDedicated_Data/Managed/UnityEngine.CoreModule.dll",
+      "bytes": 1985872,
+      "sha256": "9bf9488b3f60fec06c45ff049ebb489e40e4d401565ff92237c411e2b8ae19b2"
+    }
+  ],
+  "query_layer_mask": 262144,
+  "program": "environment-onenable-1"
+}

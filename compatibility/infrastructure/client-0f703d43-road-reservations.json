@@ -1,0 +1,80 @@
+{
+  "format": "papyrus-road-cost-profile",
+  "schema": 1,
+  "id": "client-0f703d43-road-reservations-1",
+  "engine": "papyrus-road-costmap-1",
+  "infrastructure_sha256": "9c391be2e9a9b333e98494c177029c61db0e15c890cca5775fc169aa4f6b1795",
+  "sources": [
+    {
+      "relative_path": "RustClient_Data/Plugins/x86_64/RustNative.dll",
+      "sha256": "0f703d43b57672b8bb3dfd29bab0d484f8622fbac66dee7f1f058893ef22a99c",
+      "bytes": 1737552
+    },
+    {
+      "relative_path": "Bundles/AssetSceneManifest.json",
+      "sha256": "2fe597c30548f1feff0c575b78a2b2e199853f7f36f0e3e97b9647778c6f5b47",
+      "bytes": 1404009
+    },
+    {
+      "relative_path": "Bundles/shared/assetscenes.bundle",
+      "sha256": "dfed19615a919bc4f58e8675e632a172f5f1488ddf7cb60a49601081c3b6eeb4",
+      "bytes": 971378848
+    },
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+      "bytes": 304039424
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+      "bytes": 68271512
+    },
+    {
+      "relative_path": "Bundles/maps/maps.bundle",
+      "sha256": "50d7c807360ad98b18b91588aafbec2a9d5bc7c2102cc90d4b250a63dc209a63",
+      "bytes": 114140208
+    }
+  ],
+  "maximum_work": 128000000,
+  "policy": {
+    "near_radius": 5.0,
+    "clearance_radius": 15.0,
+    "maximum_slope": 20.0,
+    "blocked_topology": 196996,
+    "clearance_topology": 10487296,
+    "water_topology": 49152,
+    "cliff_topology": 2,
+    "expensive_cost": 5000,
+    "normal_base": 1,
+    "noise_min": 100,
+    "noise_max_exclusive": 200,
+    "slope_scale": 10.0
+  },
+  "joins": {
+    "engine": "papyrus-road-ring-reuse-4",
+    "maximum_work": 8000000,
+    "maximum_points": 65536,
+    "source_grid_spacing": 7.5,
+    "bridge_radius_cells": 15,
+    "trim_radius_cells": 1,
+    "directional_penalty": 10000,
+    "directional_radius_cells": 1,
+    "fit_heights_in_search": true,
+    "river_water": {
+      "engine": "papyrus-road-river-clearance-1",
+      "topology": 49152,
+      "clearance": 2.0
+    }
+  },
+  "path_reservations": {
+    "engine": "papyrus-road-placement-sweep-1",
+    "width": 20.0,
+    "sample_spacing": 1.0,
+    "terrain_origin_y": -500.0,
+    "terrain_height": 1000.0,
+    "spline": true,
+    "maximum_work": 128000000,
+    "main_road_width": 24.0
+  }
+}

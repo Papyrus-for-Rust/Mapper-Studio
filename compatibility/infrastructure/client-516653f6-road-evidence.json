@@ -1,0 +1,271 @@
+{
+  "format": "papyrus-client-road-static-evidence",
+  "schema": 1,
+  "unity_version": "6000.3.28x1",
+  "metadata_version": 39,
+  "sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "bytes": 270462288,
+      "sha256": "516653f622c05ed95d6667ebda0f68321f2f10ea755feab929cfb6897d08c1fd"
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "bytes": 68769640,
+      "sha256": "d3380cd4e62412f01ba99825204bee3f33fa238e4ac0ec4b98c8a1873a133632"
+    }
+  ],
+  "source_profiles": [
+    {
+      "path": "compatibility/infrastructure/client-58f3263f-road-paint.json",
+      "sha256": "3befe0c7a6daec12e0f74866cb899d6efdd5823322867fb4af59b63e28ca7819",
+      "lf_sha256": "3befe0c7a6daec12e0f74866cb899d6efdd5823322867fb4af59b63e28ca7819",
+      "crlf_sha256": "62cd7015a0aab9244241186f22b4feebbea727079fe8182cdfc356e7d4ec10cd"
+    },
+    {
+      "path": "compatibility/infrastructure/client-58f3263f-road-reservations.json",
+      "sha256": "9464441a5adb75998dc791f4cbb25b6c6b5ceefee4a725b11c5cb695b5c4c085",
+      "lf_sha256": "9464441a5adb75998dc791f4cbb25b6c6b5ceefee4a725b11c5cb695b5c4c085",
+      "crlf_sha256": "646c65418624af7b4df1e16bc756718a5cebc705f13633bdd63e0919d148e551"
+    },
+    {
+      "path": "compatibility/infrastructure/client-58f3263f-road-semantics.json",
+      "sha256": "d8b775ab61875436e497af3a7287a73b1344ab3ac9c7625426c6d0d1f2221697",
+      "lf_sha256": "d8b775ab61875436e497af3a7287a73b1344ab3ac9c7625426c6d0d1f2221697",
+      "crlf_sha256": "efd4311afb54f70e2341423d716427156d663de3a45832c142a7c8321abe9cb3"
+    },
+    {
+      "path": "compatibility/infrastructure/client-58f3263f-road-terrain.json",
+      "sha256": "5f9484ef8cfe7954206ea488da1b5e1bfb6d26397d564189eafd2ac5d6d5322d",
+      "lf_sha256": "5f9484ef8cfe7954206ea488da1b5e1bfb6d26397d564189eafd2ac5d6d5322d",
+      "crlf_sha256": "1632685797917451a8544b128485f2c9a986ae5616cc5d256ab6b34926ab21c0"
+    },
+    {
+      "path": "compatibility/infrastructure/client-58f3263f-road-topology.json",
+      "sha256": "f5ff9d7a6a0732e923a89bddf00572f480a032329114a182d7be0833da8c34ab",
+      "lf_sha256": "6a158708c9940e4eacda22c3bd04845a37d430aa1dd95eb2519c2d2d9f3fd06f",
+      "crlf_sha256": "f5ff9d7a6a0732e923a89bddf00572f480a032329114a182d7be0833da8c34ab"
+    },
+    {
+      "path": "compatibility/infrastructure/client-58f3263f-surfaces.json",
+      "sha256": "5f6e1f32104419450476ead8b1fb891e316feb753a15d9a51092b41610417998",
+      "lf_sha256": "2bb95616d3ffe5dca38ca83c6a6858012aab6ea94bec12c3f14a6dce38077581",
+      "crlf_sha256": "5f6e1f32104419450476ead8b1fb891e316feb753a15d9a51092b41610417998"
+    },
+    {
+      "path": "compatibility/infrastructure/client-516653f6-road-enums.json",
+      "sha256": "50c91c8504f0217f564d9be3c17b2fc092c9dabaa2ada1740b665dc1c464de73",
+      "lf_sha256": "50c91c8504f0217f564d9be3c17b2fc092c9dabaa2ada1740b665dc1c464de73",
+      "crlf_sha256": "0712e87193a3491b8c082bdf759f88a63ef279ada6aa08a1067e7170c8348db3"
+    },
+    {
+      "path": "compatibility/monuments/client-58f3263f-roadside.json",
+      "sha256": "1f78ade2d411f1dcc8732625cab780038ecefdfa8bede6df31ae1d9862b12807",
+      "lf_sha256": "1f78ade2d411f1dcc8732625cab780038ecefdfa8bede6df31ae1d9862b12807",
+      "crlf_sha256": "22720b9e03579954b4ceac9a26addaa10d3f166fda8de40ce36f0192be02950e"
+    }
+  ],
+  "reviewed_windows": [
+    {
+      "type": "PlaceMonumentsRoadside",
+      "address": "0x1843329a0",
+      "bytes": 9184,
+      "sha256": "d166029177bc6d37c89bfddf698edfcff88bd97dc644ca9885fd1f24fbdc5ad9",
+      "complete": true,
+      "capture": "client-58f-active-process-part0-20261118.json"
+    },
+    {
+      "type": "GenerateRoadRing",
+      "address": "0x181815e20",
+      "bytes": 5184,
+      "sha256": "089474624fce3d3f4be289180f65abd6d98b649669bfb936737fa76c79ae1a41",
+      "complete": true,
+      "capture": "client-58f-active-process-part1-20261118.json"
+    },
+    {
+      "type": "GenerateRoadLayout",
+      "address": "0x1849892b0",
+      "bytes": 8224,
+      "sha256": "1f046cbb1cb7392e63f3cf73f378617181b0055bb37d8bebbfbfeeee6ff78b90",
+      "complete": true,
+      "capture": "client-58f-active-process-part1-20261118.json"
+    },
+    {
+      "type": "TerrainPath",
+      "address": "0x18302ac90",
+      "bytes": 1168,
+      "sha256": "571f052fd59f164ab9ee4f72e12fa172d2f6b20db4d5c6c1ada8739ed19c6c9f",
+      "complete": true,
+      "capture": "client-58f-road-helpers-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRoadLayout",
+      "address": "0x184986ed0",
+      "bytes": 528,
+      "sha256": "23be36587b897c7ba831b76444dd454a8a0f76d20e5f33e3dd16451453d31071",
+      "complete": true,
+      "capture": "client-58f-road-class-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRoadTopology",
+      "address": "0x1856964d0",
+      "bytes": 992,
+      "sha256": "45bf01936925dcb1bf128a938bae6e25100ed25a9f2405ec6b18ce51144744ed",
+      "complete": true,
+      "capture": "client-58f-road-class-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRoadTerrain",
+      "address": "0x1843ff160",
+      "bytes": 2672,
+      "sha256": "b23e2e30f72d78591c762d868b37ce4345f2c94c162e7956034584058fb101e5",
+      "complete": true,
+      "capture": "client-58f-road-class-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRoadTexture",
+      "address": "0x1824274f0",
+      "bytes": 544,
+      "sha256": "e288c649d350f39520d680fafb6e67c52d90595384dcf964f216e79cb676042e",
+      "complete": true,
+      "capture": "client-58f-road-class-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRoadMeshes",
+      "address": "0x185ee56f0",
+      "bytes": 2304,
+      "sha256": "5f20fa6f76752bb1961e89303aa35c8b5796ac014abe904ec17c7ebde1343056",
+      "complete": true,
+      "capture": "client-58f-road-class-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182a8e610",
+      "bytes": 2432,
+      "sha256": "ff9fa22583889378a7ae4e3ee24ad8254229f855fe5d84aaa5b8be129cdf2177",
+      "complete": true,
+      "capture": "client-58f-road-surface-helpers-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182a93eb0",
+      "bytes": 800,
+      "sha256": "73460971b49bb467cf0c85956a2ad224863522475eeb7f71f8791e8071839d6c",
+      "complete": true,
+      "capture": "client-58f-road-surface-helpers-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182a95e30",
+      "bytes": 2432,
+      "sha256": "dac5e3ebb6479f42df30ecc22e28080b287de4fa5c49dd9b9fb340189ef03c31",
+      "complete": true,
+      "capture": "client-58f-road-surface-helpers-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182a8e460",
+      "bytes": 352,
+      "sha256": "3a4435eaf2ed688c2eed3b0cad4c98d62f7af3f00a253c8f58b2a40b12a865a0",
+      "complete": true,
+      "capture": "client-58f-road-shape-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182a9b0e0",
+      "bytes": 3392,
+      "sha256": "96dd7c50bc9244bf92fe332b19a180e2a93ef7c5ad5406f0e798dd8ac406ad3e",
+      "complete": true,
+      "capture": "client-58f-road-shape-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd",
+      "address": "0x182ab1490",
+      "bytes": 1296,
+      "sha256": "8a4dad269289962ef156e10a5f3fad9a659de86bad8d828beecb433bc0e4b40a",
+      "complete": true,
+      "capture": "client-58f-road-shape-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRoadTopology+<>c__DisplayClass1_0",
+      "address": "0x185696b10",
+      "bytes": 208,
+      "sha256": "7b8be105b5cb29eaced113a39e856f1f25d568fe69149d373fbd9ce3e6ee2170",
+      "complete": true,
+      "capture": "client-58f-road-family-windows-20261118.json"
+    },
+    {
+      "type": "GenerateRoadTerrain+<>c__DisplayClass5_0",
+      "address": "0x184402b60",
+      "bytes": 336,
+      "sha256": "8135f88f8fb0235a37c43edb51c6c775d48b32492109716049f1916eddcb163a",
+      "complete": true,
+      "capture": "client-58f-road-family-windows-20261118.json"
+    },
+    {
+      "type": "%4824bad1fdd93a35bc2ad302a8c81767b46081fd+<>c__DisplayClass56_1",
+      "address": "0x182ac7350",
+      "bytes": 480,
+      "sha256": "5af8606d4723ab0a7e35c7b5c0d1d13446fc301b9107b93a4267fa489e386c40",
+      "complete": true,
+      "capture": "client-58f-path-list-family-windows-20261118.json"
+    }
+  ],
+  "asset_captures": [
+    {
+      "path": "client-58f-road-infrastructure-capture-20261118/40ec9d1c771ffece9a0c783c617eca9514351dc31b6620e7470c1a347024ff19/infrastructure.json",
+      "sha256": "40ec9d1c771ffece9a0c783c617eca9514351dc31b6620e7470c1a347024ff19",
+      "prefabs": 98,
+      "meshes": 0
+    },
+    {
+      "path": "client-58f-road-surface-capture-20261118/7b18da6779a6cb1724af3cb5f6d879eaf148e0e1f49980e22a50b8fce84c1d88/meshes.json",
+      "sha256": "7b18da6779a6cb1724af3cb5f6d879eaf148e0e1f49980e22a50b8fce84c1d88",
+      "prefabs": 0,
+      "meshes": 3
+    },
+    {
+      "path": "client-58f-roadside-capture-20261118/0b078a1a72d07de37574caaada9e478309aaba6dfc144d361ac1b4cbfecc10d2/roadside.json",
+      "sha256": "0b078a1a72d07de37574caaada9e478309aaba6dfc144d361ac1b4cbfecc10d2",
+      "prefabs": 4,
+      "meshes": 0
+    }
+  ],
+  "enum_reference": {
+    "path": "client-58f-generation-enums-20261118.json",
+    "sha256": "89978e894bc9e1ec90d217a13dbe49230da54ac73951fbe71b71afdab5928fe2"
+  },
+  "observations": {
+    "costmap": "The road entry points call TerrainPath 0x18302ac90. Its grid spacing is 7.5 m, query radii are 5 and 15 m, slope threshold is 20 degrees, and masks are 196996, 10487296 and 49152.",
+    "families": "Ring paths use width 12. Access and trail configuration selects widths 10 and 4, hierarchies 1 and 2, random scale 0.75, offset -0.125, outer fade 8, topology 2048 and splat masks 128 and 1. Trail inner padding is 0.4.",
+    "paint": "PathList radius modulation uses distance times 0.005 and unsigned-noise scale 0.5 plus 1. Its length-dependent branch is controlled by scaleWidthWithLength. The topology callback uses threshold 0.3.",
+    "post_topology": "The post-pass dilates mask 6144 with radius six. Its callback tests eligibility mask 49, sets bit 12, and sets cliff bit 1 above slope 40 degrees.",
+    "terrain": "Terrain processing uses two road fades 1 and 0.5, rail fade multiplier 0.25, water topology 49152 and clearance 2. The smoothing callback prioritizes masks 525312, 1048576, 16384 and 32768 with weights 0, 0.5, 0.1 and 0.3. The active pass requests eight vertical smoothing iterations.",
+    "meshes": "Road meshes include hierarchies below two. Template scheduling steps by five repetitions and centers chunks using 2.5 repetitions.",
+    "roadside": "The active roadside program uses five-meter samples and two eight-candidate loops. Capture retains four roadside prefab socket records.",
+    "scene": "Selected hierarchy stages retain ring, paved layout, trail layout, roadside placement, topology, terrain and texture order. Ring minimum size remains 4000."
+  },
+  "metadata_field_offsets_used_as_layout_authority": false,
+  "application_policies": [
+    "Bounded search, work and earthwork limits",
+    "Deterministic independent generation and recovery"
+  ],
+  "game_code_executed": false,
+  "physics_executed": false,
+  "complete_world_validated": false,
+  "server_loading_validated": false,
+  "inspection_tool_sources": [
+    {
+      "path": "tools/Mapper.ClientReference/EnvironmentReference.cs",
+      "sha256": "6869462887fa8ac076970ad42b1f6c5da694cecd8540d92849f1f94b34b4e019"
+    },
+    {
+      "path": "tools/Mapper.ClientReference/Program.cs",
+      "sha256": "7112ad75681a8dac597ec88d93f7d752ae0da7af5dfc64dfa47e229b4bffe556"
+    },
+    {
+      "path": "tools/Mapper.ClientReference/StaticFieldReference.cs",
+      "sha256": "3d9228ffb5ce8647012f339fd2039ccd7ed582d1936644be21624f1ec8e8e82a"
+    }
+  ]
+}

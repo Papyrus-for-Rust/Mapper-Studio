@@ -1,0 +1,26 @@
+{
+  "format": "papyrus-prefab-priority-profile",
+  "schema": 1,
+  "native_sha256": "8dd4e23570729ddbd72844bdb8a5e04bfa671612b3e7d34841d17d2353f7015c",
+  "code_sources": [
+    {
+      "relative_path": "GameAssembly.dll",
+      "sha256": "199a470f2510320be42d127cc55e946f51a2fc0b0b3ed0bf8671c2a8bb73b252",
+      "bytes": 270636368
+    },
+    {
+      "relative_path": "RustClient_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "sha256": "266b023e647e1fcedd7c4590ea110d5131bbb070bf23f3c42fb33f935cc9750a",
+      "bytes": 68754532
+    }
+  ],
+  "default_priority": 2,
+  "enum_type": "PrefabPriority",
+  "enum_field": "Default",
+  "comparison": {
+    "owner": "%e2d73d0163b7cdfc7a757d20de1164831a4a12e4",
+    "address": 6584490480,
+    "bytes": 160,
+    "sha256": "4c3a33c64970b1fa21078dba77dbfdc87366d1a831cafcb96d2f954093200e86"
+  }
+}

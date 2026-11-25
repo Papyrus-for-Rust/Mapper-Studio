@@ -1,0 +1,145 @@
+{
+  "format": "mapper-owned-shader-lighting-probe",
+  "schema": 1,
+  "driver": "d3d11-warp",
+  "rows": [
+    {
+      "world_normal": [
+        0,
+        1,
+        0
+      ],
+      "rgba": [
+        0.947768211,
+        1.01857078,
+        1.03106523,
+        1
+      ]
+    },
+    {
+      "world_normal": [
+        0.600000024,
+        0.800000012,
+        0
+      ],
+      "rgba": [
+        0.961600482,
+        1.03347206,
+        1.0461551,
+        1
+      ]
+    },
+    {
+      "world_normal": [
+        -0.600000024,
+        0.800000012,
+        0
+      ],
+      "rgba": [
+        0.797341526,
+        0.856520176,
+        0.866963506,
+        1
+      ]
+    },
+    {
+      "world_normal": [
+        0,
+        0.800000012,
+        0.600000024
+      ],
+      "rgba": [
+        1.12758839,
+        1.21228623,
+        1.22723293,
+        1
+      ]
+    },
+    {
+      "world_normal": [
+        0,
+        0.800000012,
+        -0.600000024
+      ],
+      "rgba": [
+        0.631353498,
+        0.677705824,
+        0.685885668,
+        1
+      ]
+    },
+    {
+      "world_normal": [
+        0.300000012,
+        0.800000012,
+        0.519615233
+      ],
+      "rgba": [
+        1.13541174,
+        1.22071421,
+        1.23576736,
+        1
+      ]
+    },
+    {
+      "world_normal": [
+        -0.300000012,
+        0.800000012,
+        0.519615233
+      ],
+      "rgba": [
+        1.05328238,
+        1.13223827,
+        1.14617157,
+        1
+      ]
+    },
+    {
+      "world_normal": [
+        0.300000012,
+        0.800000012,
+        -0.519615233
+      ],
+      "rgba": [
+        0.705659747,
+        0.757753849,
+        0.766946912,
+        1
+      ]
+    },
+    {
+      "world_normal": [
+        -0.300000012,
+        0.800000012,
+        -0.519615233
+      ],
+      "rgba": [
+        0.623530209,
+        0.669278026,
+        0.677351058,
+        1
+      ]
+    }
+  ],
+  "shader_blob_sha256": "9ff936729f90baad098b7a69f0a3244868345f99e3a2542e00063cc004821e07",
+  "pixel_program_sha256": "b48a03a5b8b079f0fbc660e098a6430ac31ed25f1c4659d96ada88cb94a924d8",
+  "game_assembly_sha256": "e7156192c3773f1f07cd58f0a7817b35705683bab4f40cd4b14599bc0a4f954f",
+  "metadata_sha256": "1aa177b0ddfea713a2050a40d03533f45d62e6f3c92fa75201afde3dd64b94d1",
+  "fixture_scope": "Synthetic snow, flat height 20m, zero shore/slope, mode/grid/night disabled, constant UV 0.5. Canonical sampled DXT5nm lanes; no normal texture generation/compression parity claim.",
+  "material": {
+    "snow": [
+      0.86274517,
+      0.9294118,
+      0.94117653,
+      1.0
+    ],
+    "sun_direction": [
+      0.95,
+      2.87,
+      2.37
+    ],
+    "sun_power": 0.65,
+    "brightness": 1.05,
+    "contrast": 0.94
+  }
+}
