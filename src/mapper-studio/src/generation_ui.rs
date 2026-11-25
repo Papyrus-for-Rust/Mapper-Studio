@@ -1514,11 +1514,18 @@ impl Studio {
     }
 
     pub(super) fn generation_status(&mut self, ui: &mut egui::Ui) {
+        let readiness = self.generation_readiness();
+        let preparing = self.source.inspection_token().is_some() || self.prefabs.preparation_token().is_some();
+        if !self.generation_in_progress() && !preparing
+            && matches!(readiness, Ok(()) | Err(GenerationBlocker::MissingSeed))
+        {
+            return;
+        }
+
         egui::Panel::bottom("generation-status").exact_size(34.).resizable(false)
             .frame(egui::Frame::NONE.fill(ui.visuals().extreme_bg_color).inner_margin(egui::Margin::symmetric(12, 4)))
             .show(ui, |ui| {
             ui.horizontal(|ui| {
-                let readiness = self.generation_readiness();
                 if matches!(readiness, Err(GenerationBlocker::CheckingOverlays)) {
                     ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
                 }
@@ -1578,11 +1585,10 @@ impl Studio {
                     .or_else(|| self.prefabs.preparation_token())
                 {
                     loading_ui::show(ui, loading_ui::Status::Preparing(token));
-                } else if !overlay_blocked {
-                    loading_ui::show(ui, match &readiness {
-                        Ok(()) => loading_ui::Status::Ready,
-                        Err(error) => loading_ui::Status::Blocked(error.message()),
-                    });
+                } else if !overlay_blocked && let Err(error) = &readiness
+                    && !matches!(error, GenerationBlocker::MissingSeed)
+                {
+                    loading_ui::show(ui, loading_ui::Status::Blocked(error.message()));
                 }
             });
         });
@@ -7245,6 +7251,9 @@ mod tests {
         }, &ctx);
         assert_eq!(app.generation.queue.len(), MAX_BATCH);
         assert_eq!(app.generation_readiness(), Err(GenerationBlocker::QueueFull));
+        let active = render(&mut app, vec![]);
+        let generate = text_rect(&active, "Queue map").unwrap().center();
+        let dropdown = egui::pos2(dropdown.x, generate.y);
         assert!(text_rect(&click(&mut app, generate), "Queue full").is_some());
         assert_eq!(app.generation.queue.len(), MAX_BATCH);
 
@@ -7331,7 +7340,7 @@ mod tests {
     }
 
     #[test]
-    fn bottom_actions_keep_the_canvas_stable_and_open_matching_installation_settings() {
+    fn idle_workspace_hides_the_footer_and_active_recovery_stays_available() {
         let _background = mapper_studio::loading_progress::begin("Terrain colors", None);
         for dark in [false, true] {
             let ctx = egui::Context::default();
@@ -7344,7 +7353,9 @@ mod tests {
             let mut app = super::super::tests::fixture(&ctx);
             let mut rects = Vec::new();
             let mut textures = snapshot::Textures::default();
-            for state in ["idle", "busy", "full", "blocked", "assets"] {
+            let seed = app.project.master_seed;
+            for state in ["idle", "missing-seed", "busy", "full", "blocked", "assets"] {
+                app.project.master_seed = if state == "missing-seed" { 0 } else { seed };
                 if matches!(state, "busy" | "full") {
                     let total = if state == "full" { MAX_BATCH } else { 2 };
                     app.generation.queue = (0..total)
@@ -7397,6 +7408,9 @@ mod tests {
                         });
                     },
                 );
+                assert!(!output.shapes.iter().any(
+                    |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.job.text == "Ready")
+                ));
                 let action = if app.generation.busy() { "Queue map" } else { "Generate" };
                 assert!(output.shapes.iter().any(
                     |s| matches!(&s.shape,egui::Shape::Text(t) if t.galley.job.text == action)
@@ -7466,7 +7480,9 @@ mod tests {
                     assert_eq!(app.project, recipe);
                 }
             }
-            assert!(rects.iter().all(|rect| *rect == rects[0]));
+            assert_eq!(rects[0], rects[1], "An unset seed should also leave the idle workspace clear");
+            assert!(rects[0].bottom() > rects[2].bottom() + 30., "Idle content should reclaim the footer");
+            assert!(rects[2..].iter().all(|rect| *rect == rects[2]));
         }
     }
 }

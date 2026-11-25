@@ -4,7 +4,6 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 #[derive(Clone, Copy)]
 pub(super) enum Status<'a> {
-    Ready,
     Blocked(&'a str),
     Preparing(&'a Arc<AtomicBool>),
     Generating {
@@ -27,15 +26,6 @@ pub(super) fn show(ui: &mut egui::Ui, status: Status<'_>) {
 
 fn panel(ui: &mut egui::Ui, setup: &[Snapshot], status: Status<'_>) {
     match status {
-        Status::Ready => {
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(8., 8.), egui::Sense::hover());
-            ui.painter().circle_filled(rect.center(), 3.5, if ui.visuals().dark_mode {
-                egui::Color32::from_rgb(117, 190, 151)
-            } else {
-                egui::Color32::from_rgb(50, 115, 83)
-            });
-            ui.weak("Ready");
-        }
         Status::Blocked(error) => {
             ui.add(
                 egui::Label::new(
@@ -206,73 +196,31 @@ mod tests {
                 egui::Visuals::light()
             });
             for width in [320., 1050.] {
-                let mut remaining = Vec::new();
-                for (status, expected) in [
-                    (Status::Ready, "Ready".into()),
-                    (
-                        Status::Blocked(&issue),
-                        crate::diagnostic_ui::summary(&issue),
-                    ),
-                ] {
-                    let mut output = ctx.run_ui(
-                        egui::RawInput {
-                            screen_rect: Some(egui::Rect::from_min_size(
-                                egui::Pos2::ZERO,
-                                egui::vec2(width, 150.),
-                            )),
-                            ..Default::default()
-                        },
-                        |ui| {
-                            egui::Panel::bottom("readiness-row")
-                                .exact_size(36.)
-                                .show(ui, |ui| {
-                                    let available = ui.available_rect_before_wrap();
-                                    ui.horizontal(|ui| show(ui, status));
-                                    assert!(ui.min_rect().right() <= available.right() + 1.);
-                                });
-                            remaining.push(ui.available_rect_before_wrap());
-                        },
-                    );
-                    assert!(output.shapes.iter().any(|shape| {
-                        matches!(&shape.shape, egui::Shape::Text(text) if text.galley.job.text == expected.as_ref())
-                    }));
-                    output.textures_delta.clear();
-                }
-                assert_eq!(remaining[0], remaining[1]);
+                let expected = crate::diagnostic_ui::summary(&issue);
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(width, 150.),
+                        )),
+                        ..Default::default()
+                    },
+                    |ui| {
+                        egui::Panel::bottom("readiness-row")
+                            .exact_size(36.)
+                            .show(ui, |ui| {
+                                let available = ui.available_rect_before_wrap();
+                                ui.horizontal(|ui| show(ui, Status::Blocked(&issue)));
+                                assert!(ui.min_rect().right() <= available.right() + 1.);
+                            });
+                    },
+                );
+                assert!(output.shapes.iter().any(|shape| {
+                    matches!(&shape.shape, egui::Shape::Text(text) if text.galley.job.text == expected.as_ref())
+                }));
+                output.textures_delta.clear();
             }
         }
-    }
-    #[test]
-    fn background_jobs_leave_ready_and_viewport_space_unchanged() {
-        let ctx = egui::Context::default();
-        let mut remaining = Vec::new();
-        let mut positions = Vec::new();
-        for background in [false, true, false] {
-            let _job = background.then(|| loading_progress::begin("Reading textures", None));
-            let mut output = ctx.run_ui(Default::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    egui::Panel::bottom("test-generation-actions")
-                        .exact_size(44.)
-                        .resizable(false)
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| show(ui, Status::Ready));
-                        });
-                    remaining.push(ui.available_rect_before_wrap());
-                });
-            });
-            output.textures_delta.clear();
-            let labels: Vec<_> = output.shapes.iter().filter_map(|shape| match &shape.shape {
-                egui::Shape::Text(text) => Some((text.galley.job.text.as_str(), text.pos)),
-                _ => None,
-            }).collect();
-            assert_eq!(labels.len(), 1, "{labels:?}");
-            assert_eq!(labels[0].0, "Ready");
-            positions.push(labels[0].1);
-        }
-        assert_eq!(remaining[0], remaining[1]);
-        assert_eq!(remaining[1], remaining[2]);
-        assert_eq!(positions[0], positions[1]);
-        assert_eq!(positions[1], positions[2]);
     }
 
     #[test]
@@ -339,7 +287,6 @@ mod tests {
             });
             let mut textures = snapshot::Textures::default();
             for (status, job, expected) in [
-                (Status::Ready, None, "Ready"),
                 (
                     Status::Blocked("Choose the matching Rust installation"),
                     None,
