@@ -251,28 +251,17 @@ impl Studio {
         let snap = self.preferences.map_size_snap;
         let (rect, response) = ui.allocate_exact_size(Vec2::new(18., 18.), Sense::click());
         let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
-        let color = if snap.enabled() || response.hovered() || response.has_focus() {
-            ui.visuals().text_color()
-        } else {
-            ui.visuals().weak_text_color()
-        };
-        let stroke = Stroke::new(1.05, color);
-        let scale = 0.72;
-        // Align the visible mark with the text baseline rather than the hit box.
-        let center = Pos2::new(rect.center().x, label_y + 1. - 0.5 * scale);
-        let magnet = [
-            (-7., -6.), (-7., 1.), (-6., 4.), (-3.5, 6.), (0., 7.), (3.5, 6.), (6., 4.),
-            (7., 1.), (7., -6.), (3., -6.), (3., 1.), (2., 2.5), (0., 3.), (-2., 2.5),
-            (-3., 1.), (-3., -6.), (-7., -6.),
-        ];
-        ui.painter().add(egui::Shape::line(
-            magnet.map(|(x, y)| center + egui::vec2(x, y) * scale).to_vec(), stroke,
-        ));
-        for [left, right] in [[-7., -3.], [3., 7.]] {
-            ui.painter().hline(
-                center.x + left * scale..=center.x + right * scale, center.y - 2. * scale, stroke,
-            );
-        }
+        let visuals = ui.visuals();
+        let muted = visuals.weak_text_color().lerp_to_gamma(
+            visuals.panel_fill, if snap.enabled() { 0.22 } else { 0.42 },
+        );
+        let reveal = ui.ctx().animate_bool_with_time(
+            response.id.with("magnet-highlight"),
+            response.hovered() || response.has_focus(),
+            ui.style().animation_time.min(0.12),
+        );
+        let tint = muted.lerp_to_gamma(visuals.text_color(), reveal);
+        settings_dialog::Icon::Magnet.paint(ui, Pos2::new(rect.center().x, label_y + 1.), 14., tint);
         response.widget_info(|| egui::WidgetInfo::selected(
             egui::WidgetType::Button, response.enabled(), snap.enabled(), "Map size snapping",
         ));
@@ -1637,6 +1626,7 @@ mod tests {
     fn map_size_snap_hover_edits_both_size_and_distance() {
         let ctx = egui::Context::default();
         workbench_style::install(&ctx);
+        workbench_style::set_reduced_motion(&ctx, true);
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("settings.json");
         let mut app = super::super::tests::fixture(&ctx);
@@ -1659,16 +1649,25 @@ mod tests {
             render(app, vec![button(point, false)]);
         };
         let initial = render(&mut app, vec![]);
-        let magnet = initial.shapes.iter().find_map(|shape| match &shape.shape {
-            egui::Shape::Path(path) if path.points.len() == 17 => {
-                Some(path.points[4] - egui::vec2(0., 6.5 * 0.72))
+        let texture = ctx.data(|data| data.get_temp::<egui::TextureHandle>(
+            egui::Id::new(("mapper-settings-mdi", settings_dialog::Icon::Magnet)),
+        )).unwrap().id();
+        let mark = |output: &egui::FullOutput| output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Mesh(mesh) if mesh.texture_id == texture => {
+                Some((mesh.calc_bounds().center(), mesh.vertices[0].color))
             }
             _ => None,
-        }).unwrap();
+        });
+        let (magnet, idle_tint) = mark(&initial).unwrap();
         let label = recipe_text(&initial, "Size (m)").unwrap();
         assert!((magnet.y - label.y - 1.).abs() < 1.);
         assert!((10. ..55.).contains(&(magnet.x - label.x)));
         assert!(recipe_text(&initial, "Snap distance").is_none());
+        let hovered = render(&mut app, vec![egui::Event::PointerMoved(magnet)]);
+        let (_, hovered_tint) = mark(&hovered).unwrap();
+        assert_eq!(hovered_tint, ctx.style_of(ctx.theme()).visuals.text_color());
+        assert_ne!(idle_tint, hovered_tint);
+
 
         let field = |app: &mut Studio, value: u32| {
             render(app, vec![egui::Event::PointerMoved(magnet)]);

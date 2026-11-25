@@ -12,6 +12,7 @@ Authors from the upstream icon metadata:
 - Austin Andrews — cube-outline, eye-outline, format-list-checks, pine-tree,
   road-variant, speedometer, theme-light-dark.
 - Michael Irigoyen — sprout-outline, waves.
+- Simran — magnet.
 
 The [Pictogrammers notice](../../../../licenses/pictogrammers-mdi-7.4.47.txt)
 and [Apache 2.0 license](../../../../licenses/Apache-2.0.txt) accompany the
