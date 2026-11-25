@@ -158,6 +158,7 @@ pub(crate) fn legacy_profile(source: &Installation) -> Option<&'static Profile> 
                 include_str!("../../../compatibility/native/client-1dc98ce9.json"),
                 include_str!("../../../compatibility/native/client-8dd4e235.json"),
                 include_str!("../../../compatibility/native/client-58f3263f.json"),
+                include_str!("../../../compatibility/native/client-b12f0738.json"),
             ]
             .into_iter()
             .filter_map(|text| serde_json::from_str(text).ok())
@@ -180,7 +181,12 @@ pub fn for_source(source: &Installation, selected: Option<&Profile>) -> Result<P
         profile.matches(source)?;
         Ok(profile.clone())
     } else {
-        legacy(source).ok_or_else(|| "No matching native compatibility profile. Import a tested profile for this DLL and a supported ABI family.".into())
+        legacy(source).ok_or_else(|| {
+            format!(
+                "No native compatibility profile for RustNative.dll (SHA-256 {}). Choose a supported Rust installation or import a tested profile for this DLL.",
+                source.native.sha256,
+            )
+        })
     }
 }
 
@@ -197,6 +203,10 @@ mod tests {
             (
                 "58f3263fd5cc1ab31942e14b902e52ff952b65fa08896226d15181a01b486750",
                 "client-58f3263f-preview-1",
+            ),
+            (
+                "b12f07380464b9832842f136659ce0bbef31697f796217e4890dc13defe1472d",
+                "client-b12f0738-preview-1",
             ),
         ] {
             let (mut source, _) = fixture();

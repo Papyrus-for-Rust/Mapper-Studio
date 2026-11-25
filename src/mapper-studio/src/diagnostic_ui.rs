@@ -1,6 +1,81 @@
 //! Bound routine layout work while retaining the complete worker diagnostic.
 use eframe::egui;
+use mapper_studio::{
+    Project, installation::Installation, native_profile::Profile, support_snapshot::Snapshot,
+};
 use std::borrow::Cow;
+
+#[derive(Clone)]
+pub(super) struct SupportEnvironment {
+    pub version: String,
+    pub installation: Option<Installation>,
+    pub profile: Option<Profile>,
+}
+
+impl SupportEnvironment {
+    pub fn snapshot(&self, recipe: Option<&Project>) -> Snapshot {
+        let (installation, profile) = match recipe {
+            Some(recipe) => (recipe.installation.as_ref(), recipe.native_profile.as_ref()),
+            None => (self.installation.as_ref(), self.profile.as_ref()),
+        };
+        Snapshot::capture(&self.version, installation, profile)
+    }
+}
+
+fn support_environment_id() -> egui::Id {
+    egui::Id::new("mapper-support-environment")
+}
+
+pub(super) fn set_support_environment(ctx: &egui::Context, environment: SupportEnvironment) {
+    ctx.data_mut(|data| data.insert_temp(support_environment_id(), environment));
+}
+
+pub(super) fn copy_error(ui: &mut egui::Ui, error: &str, recipe: Option<&Project>) {
+    let ctx = ui.ctx().clone();
+    if error.is_empty()
+        || !ctx.data(|data| {
+            data.get_temp::<SupportEnvironment>(support_environment_id())
+                .is_some()
+        })
+    {
+        return;
+    }
+
+    if ui
+        .button("Copy error message")
+        .on_hover_text("Copies the full error and a support code. Review both before sharing.")
+        .clicked()
+        && let Some(environment) =
+            ctx.data(|data| data.get_temp::<SupportEnvironment>(support_environment_id()))
+    {
+        let message = match environment.snapshot(recipe).encode() {
+            Ok(code) => format!("{error}\n\nMapper support code\n{code}"),
+            Err(_) => error.to_owned(),
+        };
+        ctx.copy_text(message);
+    }
+}
+
+pub(super) fn support_controls(ui: &mut egui::Ui, preview: &str, code: &str) {
+    ui.label("Review the details before sharing your support code.");
+    ui.small("Anyone with the code can read these details.");
+    egui::ScrollArea::vertical()
+        .id_salt("support-preview")
+        .max_height(230.)
+        .show(ui, |ui| {
+            ui.add(egui::Label::new(egui::RichText::new(preview).monospace()).selectable(true));
+        });
+    if ui.button("Copy support code").clicked() {
+        ui.ctx().copy_text(code.to_owned());
+    }
+    ui.collapsing("Show support code", |ui| {
+        ui.add(
+            egui::Label::new(egui::RichText::new(code).monospace())
+                .wrap()
+                .selectable(true),
+        );
+    });
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum RecipeSection {
@@ -65,15 +140,30 @@ pub(super) fn excerpt(text: &str, characters: usize) -> Cow<'_, str> {
 }
 
 pub(super) fn summary(text: &str) -> Cow<'_, str> {
-    let prefix = text.char_indices().nth(240).map_or(text, |(end, _)| &text[..end]);
+    let prefix = text
+        .char_indices()
+        .nth(240)
+        .map_or(text, |(end, _)| &text[..end]);
     if let Some(issue) = routing_issue(prefix) {
         return Cow::Borrowed(match issue {
-            RoutingIssue::RoadConnections => "Some monument road connections could not be built. Check Advanced routing or try moving a monument.",
-            RoutingIssue::RoadApproach => "A road approach could not be fitted. Check Advanced routing or try moving the monument.",
-            RoutingIssue::RailGrading => "Surface rails need more terrain grading. Check Maximum cut/fill or try another terrain seed.",
-            RoutingIssue::RailGradeLimit => "Surface rails couldn’t fit within the bed grade limit. Check Bed grade or try another terrain seed.",
-            RoutingIssue::RailEntrances => "Surface rails couldn’t connect all required entrances. Try another terrain seed or review Rail settings.",
-            RoutingIssue::RailSearch => "No usable surface rail layout was found. Try another terrain seed or review Rail settings.",
+            RoutingIssue::RoadConnections => {
+                "Some monument road connections could not be built. Check Advanced routing or try moving a monument."
+            }
+            RoutingIssue::RoadApproach => {
+                "A road approach could not be fitted. Check Advanced routing or try moving the monument."
+            }
+            RoutingIssue::RailGrading => {
+                "Surface rails need more terrain grading. Check Maximum cut/fill or try another terrain seed."
+            }
+            RoutingIssue::RailGradeLimit => {
+                "Surface rails couldn’t fit within the bed grade limit. Check Bed grade or try another terrain seed."
+            }
+            RoutingIssue::RailEntrances => {
+                "Surface rails couldn’t connect all required entrances. Try another terrain seed or review Rail settings."
+            }
+            RoutingIssue::RailSearch => {
+                "No usable surface rail layout was found. Try another terrain seed or review Rail settings."
+            }
         });
     }
     if prefix.contains("Invalid coarse map surface") {
@@ -178,10 +268,16 @@ mod tests {
         );
         assert!(!summary(&text).contains("report"));
         assert!(summary(&text).len() < 160);
-        assert!(summary("Composition unavailable: Rail bed exceeds cumulative cut/fill allowance")
-            .starts_with("Surface rails need more terrain grading"));
-        assert!(summary("Generation stopped: Preview failed: Invalid coarse map surface inputs or limits")
-            .starts_with("The terrain preview could not be built."));
+        assert!(
+            summary("Composition unavailable: Rail bed exceeds cumulative cut/fill allowance")
+                .starts_with("Surface rails need more terrain grading")
+        );
+        assert!(
+            summary(
+                "Generation stopped: Preview failed: Invalid coarse map surface inputs or limits"
+            )
+            .starts_with("The terrain preview could not be built.")
+        );
         let unicode = "雪".repeat(100_000);
         assert_eq!(summary(&unicode).chars().count(), 241);
         assert_eq!(excerpt(&unicode, 4096).chars().count(), 4097);

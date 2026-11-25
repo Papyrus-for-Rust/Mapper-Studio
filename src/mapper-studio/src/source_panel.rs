@@ -61,6 +61,7 @@ pub(super) struct SourcePanel {
     task: Option<Task>,
     pending: Option<PendingSource>,
     message: String,
+    message_is_error: bool,
     selected: Option<PathBuf>,
     watch: Option<Watch>,
     watch_probe: Option<Receiver<(PathBuf, installation::ChangeWatch)>>,
@@ -73,6 +74,7 @@ impl SourcePanel {
         let task = self.task.take();
         if task.is_some() || self.pending.is_some() || self.rebind.is_some() {
             self.message.clear();
+            self.message_is_error = false;
         }
         if let Some(task) = task {
             task.cancel.store(true, Ordering::Relaxed);
@@ -88,6 +90,7 @@ impl SourcePanel {
         self.binding = None;
         self.watch = None;
         self.message.clear();
+        self.message_is_error = false;
         if !keep_selection {
             self.selected = None;
         }
@@ -97,6 +100,11 @@ impl SourcePanel {
     pub fn inspection_token(&self) -> Option<&Arc<AtomicBool>> {
         self.task.as_ref().map(|task| &task.cancel)
             .or_else(|| self.rebind.as_ref().map(|task| &task.cancel))
+    }
+
+    pub fn inspected_installation(&self) -> Option<&Installation> {
+        self.pending.as_ref().map(|source| &source.binding.identity)
+            .or_else(|| self.binding.as_ref().map(|binding| &binding.identity))
     }
 
     pub fn bound_root(&self, project: &Project) -> Option<PathBuf> {
@@ -140,6 +148,7 @@ impl SourcePanel {
             preview_engine: project.preview_engine.clone(),
         });
         self.message = "Inspecting Rust installation…".into();
+        self.message_is_error = false;
     }
     fn poll(&mut self, project: &mut Project) {
         let Some(task) = &self.task else {
@@ -173,6 +182,7 @@ impl SourcePanel {
                 }
                 self.invalidate_root(&task.root);
                 self.message = error;
+                self.message_is_error = true;
             }
             Ok(identity) => {
                 let watch = watch.expect("Successful inspections include file hints");
@@ -225,6 +235,7 @@ impl SourcePanel {
         }) {
             self.pending = None;
             self.message = "Recipe source changed. Recheck the Rust folder.".into();
+            self.message_is_error = false;
         }
         self.poll_rebind(project);
         self.poll(project);
@@ -265,6 +276,7 @@ impl SourcePanel {
         });
         self.rebind = Some(RebindTask { saved: project.clone(), binding, receiver, cancel });
         self.message = "Preparing the recipe for this Rust installation…".into();
+        self.message_is_error = false;
     }
 
     fn poll_rebind(&mut self, project: &mut Project) {
@@ -298,7 +310,10 @@ impl SourcePanel {
                 self.source_changed = true;
                 self.message = "Rust installation switched.".into();
             }
-            Err(error) => self.message = error,
+            Err(error) => {
+                self.message = error;
+                self.message_is_error = true;
+            }
         }
     }
 
@@ -409,15 +424,23 @@ impl SourcePanel {
     pub fn setup_message(&self) -> &str {
         &self.message
     }
+    pub fn copy_inspection_error(&self, ui: &mut egui::Ui) {
+        if self.message_is_error {
+            super::diagnostic_ui::copy_error(ui, &self.message, None);
+        }
+    }
+
     pub fn settings(&mut self, ui: &mut egui::Ui, project: &mut Project, can_switch: bool) {
         ui.strong("Rust installation");
         ui.small("Source for game terrain and assets");
         if let Some(identity) = &project.installation {
             ui.label(format!("{:?} · Windows x64", identity.kind));
-            ui.small(format!(
-                "Native SHA-256: {}…",
-                &identity.native.sha256[..12]
-            ));
+            ui.horizontal(|ui| {
+                ui.small("RustNative.dll fingerprint");
+                if ui.button("Copy SHA-256").on_hover_text(&identity.native.sha256).clicked() {
+                    ui.ctx().copy_text(identity.native.sha256.clone());
+                }
+            });
             ui.small(if identity.scene_manifest.is_some() {
                 "Scene manifest fingerprinted"
             } else {
@@ -450,7 +473,12 @@ impl SourcePanel {
                 self.start(self.selected_root().unwrap(), project, ui.ctx());
             }
         });
-        if self.pending.is_some() {
+        if let Some(pending) = &self.pending {
+            if ui.button("Copy new installation SHA-256")
+                .on_hover_text(&pending.binding.identity.native.sha256).clicked()
+            {
+                ui.ctx().copy_text(pending.binding.identity.native.sha256.clone());
+            }
             if let Some(task) = &self.rebind {
                 if ui.button("Cancel switch").clicked() {
                     task.cancel.store(true, Ordering::Relaxed);
@@ -467,11 +495,12 @@ impl SourcePanel {
         if !self.message.is_empty() {
             ui.small(&self.message);
         }
+        self.copy_inspection_error(ui);
         let native_available = project.installation.as_ref().is_some_and(|s| {
             mapper_studio::native_profile::for_source(s, project.native_profile.as_ref()).is_ok()
         });
         if project.installation.is_some() && !native_available {
-            ui.small("Native generation unavailable: import a tested compatibility profile for this DLL and a supported ABI family.");
+            ui.small("Mapper needs a terrain profile for this Rust build. Select a supported installation or import a tested profile below.");
         }
         if mapper_studio::native_preview::is_native(&project.preview_engine) {
             ui.label("Terrain source · Installed Rust");
@@ -484,32 +513,37 @@ impl SourcePanel {
                 project.preview_engine = mapper_studio::native_preview::VERSION.into();
             }
         }
-        ui.collapsing("Native compatibility profile", |ui| {
-            let resolved = project.installation.as_ref().and_then(|s| mapper_studio::native_profile::for_source(s, project.native_profile.as_ref()).ok());
-            if let Some(profile) = &resolved {
-                ui.label(&profile.id);
-                ui.small(format!("ABI: {}", profile.abi));
-                ui.small(if project.native_profile.is_some() { "Profile is saved inside this recipe and generation profiles." } else { "Using retained defaults for older recipes." });
-            } else { ui.small("No matching profile."); }
-            if ui.add_enabled(project.installation.is_some() && self.task.is_none(), egui::Button::new("Import native profile…")).clicked()
-                && let Some(path) = rfd::FileDialog::new().add_filter("Papyrus native profile", &["json"]).pick_file() {
-                let result = mapper_studio::native_profile::Profile::load(&path).and_then(|profile| {
-                    profile.matches(project.installation.as_ref().ok_or("Select a Rust installation first")?)?;
-                    Ok(profile)
-                });
-                match result {
-                    Ok(profile) => { project.native_profile = Some(profile); self.message = "Native profile recorded. Rebuild the terrain preview to apply it.".into(); }
-                    Err(error) => self.message = error,
+        egui::CollapsingHeader::new("Native compatibility profile")
+            .default_open(project.installation.is_some() && !native_available)
+            .show(ui, |ui| {
+                let resolved = project.installation.as_ref().and_then(|s| mapper_studio::native_profile::for_source(s, project.native_profile.as_ref()).ok());
+                if let Some(profile) = &resolved {
+                    ui.label(&profile.id);
+                    ui.small(format!("ABI: {}", profile.abi));
+                    ui.small(if project.native_profile.is_some() { "Profile is saved inside this recipe and generation profiles." } else { "Using retained defaults for older recipes." });
+                } else { ui.small("No matching profile."); }
+                if ui.add_enabled(project.installation.is_some() && self.task.is_none(), egui::Button::new("Import native profile…")).clicked()
+                    && let Some(path) = rfd::FileDialog::new().add_filter("Papyrus native profile", &["json"]).pick_file() {
+                    let result = mapper_studio::native_profile::Profile::load(&path).and_then(|profile| {
+                        profile.matches(project.installation.as_ref().ok_or("Select a Rust installation first")?)?;
+                        Ok(profile)
+                    });
+                    self.message_is_error = result.is_err();
+                    match result {
+                        Ok(profile) => { project.native_profile = Some(profile); self.message = "Native profile recorded. Rebuild the terrain preview to apply it.".into(); }
+                        Err(error) => self.message = error,
+                    }
                 }
-            }
-            if ui.add_enabled(resolved.is_some(), egui::Button::new("Export native profile…")).clicked()
-                && let Some(path) = rfd::FileDialog::new().set_file_name("native-profile.json").add_filter("Papyrus native profile", &["json"]).save_file() {
-                self.message = match mapper_studio::profile::write_document(&path, &resolved.unwrap(), true) {
-                    Ok(()) => "Native compatibility profile exported.".into(), Err(error) => error,
-                };
-            }
-            ui.small("Profiles declare an ABI and settings for an exact DLL fingerprint. New ABI families still require adapter code and testing. Importing a profile does not verify the declared ABI.");
-        });
+                if ui.add_enabled(resolved.is_some(), egui::Button::new("Export native profile…")).clicked()
+                    && let Some(path) = rfd::FileDialog::new().set_file_name("native-profile.json").add_filter("Papyrus native profile", &["json"]).save_file() {
+                    let result = mapper_studio::profile::write_document(&path, &resolved.unwrap(), true);
+                    self.message_is_error = result.is_err();
+                    self.message = match result {
+                        Ok(()) => "Native compatibility profile exported.".into(), Err(error) => error,
+                    };
+                }
+                ui.small("Profiles declare an ABI and settings for an exact DLL fingerprint. New ABI families still require adapter code and testing. Importing a profile does not verify the declared ABI.");
+            });
     }
 }
 

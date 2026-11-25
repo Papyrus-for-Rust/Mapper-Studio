@@ -552,3 +552,29 @@ mod tests {
         assert_ne!(super::identity(&a).unwrap(), super::identity(&b).unwrap());
     }
 }
+
+/// Reports the real Windows kernel version, including the Windows 11 build number.
+#[cfg(windows)]
+pub fn windows_version() -> Option<[u32; 3]> {
+    use std::mem::size_of;
+    use windows_sys::Win32::System::SystemInformation::OSVERSIONINFOW;
+
+    #[link(name = "ntdll")]
+    unsafe extern "system" {
+        fn RtlGetVersion(info: *mut OSVERSIONINFOW) -> i32;
+    }
+
+    let mut info = OSVERSIONINFOW {
+        dwOSVersionInfoSize: size_of::<OSVERSIONINFOW>() as u32,
+        dwMajorVersion: 0,
+        dwMinorVersion: 0,
+        dwBuildNumber: 0,
+        dwPlatformId: 0,
+        szCSDVersion: [0; 128],
+    };
+    // SAFETY: info is a live, writable OSVERSIONINFOW with its size set.
+    if unsafe { RtlGetVersion(&mut info) } != 0 {
+        return None;
+    }
+    Some([info.dwMajorVersion, info.dwMinorVersion, info.dwBuildNumber])
+}
