@@ -258,7 +258,8 @@ impl Studio {
         };
         let stroke = Stroke::new(1.05, color);
         let scale = 0.72;
-        let center = Pos2::new(rect.center().x, label_y - 0.5 * scale);
+        // Align the visible mark with the text baseline rather than the hit box.
+        let center = Pos2::new(rect.center().x, label_y + 1. - 0.5 * scale);
         let magnet = [
             (-7., -6.), (-7., 1.), (-6., 4.), (-3.5, 6.), (0., 7.), (3.5, 6.), (6., 4.),
             (7., 1.), (7., -6.), (3., -6.), (3., 1.), (2., 2.5), (0., 3.), (-2., 2.5),
@@ -287,24 +288,31 @@ impl Studio {
                 .gap(1.)
                 .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
                 .show(|ui| {
-                    ui.horizontal(|ui| {
-                        let caption = ui.label(if next.enabled() { "Snap distance" } else { "Snap distance (off)" });
-                        ui.add(egui::DragValue::new(&mut distance)
+                    egui::Grid::new("map-size-controls").show(ui, |ui| {
+                        let size_label = ui.label("Map size");
+                        let size = ui.add(Self::map_size_value(&mut self.project.size).suffix(" m"))
+                            .labelled_by(size_label.id);
+                        ui.end_row();
+
+                        let snap_label = ui.label(if next.enabled() { "Snap distance" } else { "Snap distance (off)" });
+                        let step = ui.add(egui::DragValue::new(&mut distance)
                             .range(1..=MapSizeSnap::MAX_DISTANCE)
                             .speed(1.)
                             .suffix(" m")
                             .update_while_editing(false))
-                            .labelled_by(caption.id)
-                            .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
+                            .labelled_by(snap_label.id);
+                        ui.end_row();
+                        (size, step)
                     }).inner
                 });
             if let Some(panel) = panel {
-                if panel.inner.changed() && distance != next.distance() {
+                let (size, step) = panel.inner;
+                if step.changed() && distance != next.distance() {
                     next = next.with_distance(distance);
                 }
                 // Draw once after the pointer leaves so a click outside can commit a typed value.
                 let keep_open = response.hovered() || response.gained_focus() || over_popup
-                    || panel.inner.has_focus() || panel.inner.dragged();
+                    || size.has_focus() || size.dragged() || step.has_focus() || step.dragged();
                 ui.ctx().data_mut(|data| {
                     if keep_open {
                         data.insert_temp(popup_state, panel.response.rect);
@@ -323,6 +331,11 @@ impl Studio {
         }
     }
 
+    fn map_size_value(size: &mut u32) -> egui::DragValue<'_> {
+        egui::DragValue::new(size).range(1000..=6000).speed(50.)
+            .update_while_editing(false)
+    }
+
     fn recipe_basics(&mut self, ui: &mut egui::Ui) {
         let old_size = self.project.size;
         let track_width = ui.available_width().max(1.);
@@ -334,8 +347,9 @@ impl Studio {
             let value_x = start + (10. + (track_width - 20.) * fraction - 26.)
                 .clamp(0., (track_width - 52.).max(0.));
             ui.add_space((value_x - ui.next_widget_position().x).max(0.));
-            ui.add_sized([52., 24.], egui::DragValue::new(&mut self.project.size)
-                .range(1000..=6000).speed(50)).labelled_by(label.id);
+            ui.add_sized([52., 24.], Self::map_size_value(&mut self.project.size))
+                .labelled_by(label.id)
+                .on_hover_text("Drag left or right to resize. Click to type an exact size.");
             label
         }).inner;
         let snap = self.preferences.map_size_snap;
@@ -1620,7 +1634,7 @@ mod tests {
     }
 
     #[test]
-    fn map_size_snap_distance_can_be_typed_dragged_and_toggled() {
+    fn map_size_snap_hover_edits_both_size_and_distance() {
         let ctx = egui::Context::default();
         workbench_style::install(&ctx);
         let directory = tempfile::tempdir().unwrap();
@@ -1652,7 +1666,7 @@ mod tests {
             _ => None,
         }).unwrap();
         let label = recipe_text(&initial, "Size (m)").unwrap();
-        assert!((magnet.y - label.y).abs() < 1.);
+        assert!((magnet.y - label.y - 1.).abs() < 1.);
         assert!((10. ..55.).contains(&(magnet.x - label.x)));
         assert!(recipe_text(&initial, "Snap distance").is_none());
 
@@ -1704,6 +1718,31 @@ mod tests {
             (app.project.size - 1000) % distance != 0
         }), "With snapping off the slider must reach values between the snap points");
         click(&mut app, magnet);
+        assert_eq!(app.preferences.map_size_snap, MapSizeSnap::Custom(distance));
+
+        let size_field = |app: &mut Studio| {
+            let value = app.project.size.to_string();
+            render(app, vec![egui::Event::PointerMoved(magnet)]);
+            let open = render(app, vec![]);
+            let caption = recipe_text(&open, "Map size").unwrap();
+            let field = recipe_text(&open, &value).unwrap();
+            assert!((caption.y - field.y).abs() < 2.);
+            field
+        };
+        let point = size_field(&mut app);
+        let dragged = point + egui::vec2(8., 0.);
+        let before_drag = app.project.size;
+        render(&mut app, vec![egui::Event::PointerMoved(point), button(point, true)]);
+        render(&mut app, vec![egui::Event::PointerMoved(dragged)]);
+        render(&mut app, vec![button(dragged, false)]);
+        assert!(app.project.size > before_drag, "Dragging the size should resize the map");
+
+        let point = size_field(&mut app);
+        click(&mut app, point);
+        render(&mut app, vec![]);
+        render(&mut app, vec![egui::Event::Text("4123".into())]);
+        click(&mut app, Pos2::new(180., 110.));
+        assert_eq!(app.project.size, 4123, "Clicking away should apply the exact typed size");
         assert_eq!(app.preferences.map_size_snap, MapSizeSnap::Custom(distance));
     }
 
