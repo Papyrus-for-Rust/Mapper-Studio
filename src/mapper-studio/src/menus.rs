@@ -118,6 +118,7 @@ impl Studio {
             let anchor = match tab {
                 Tab::Map | Tab::Generated(_) | Tab::Nodes => self.map_tab_path(),
                 Tab::Content | Tab::Plugins => self.dock.find_tab(&Tab::Inspector),
+                Tab::Recipe(_) => self.dock.find_tab_from(|tab| matches!(tab, Tab::Recipe(_))),
                 other => self.dock.find_tab(&other),
             };
             if let Some(path) = anchor {
@@ -232,6 +233,11 @@ impl Studio {
                 i.consume_shortcut(&egui::KeyboardShortcut::new(command, egui::Key::S))
             }) {
                 self.save(false, &ctx);
+            }
+            if !self.recipe_settings_open && !self.recipe_tabs.renaming()
+                && ctx.input_mut(|input| input.consume_shortcut(&egui::KeyboardShortcut::new(command, egui::Key::Enter)))
+            {
+                self.generate_recipe(&ctx);
             }
             if !ctx.egui_wants_keyboard_input() || self.focused_map_canvas(&ctx).is_some() {
                 if ctx.input_mut(|i| {
@@ -432,7 +438,8 @@ impl Studio {
                 let mut generate = ui.add_enabled(
                     readiness.is_ok()
                         || matches!(readiness, Err(generation_ui::GenerationBlocker::MissingSeed)),
-                    egui::Button::new("Generate recipe"),
+                    egui::Button::new(format!("Generate from {}", self.recipe_tabs.name(self.recipe_tabs.active())))
+                        .shortcut_text(ctx.format_shortcut(&egui::KeyboardShortcut::new(command, egui::Key::Enter))),
                 );
                 if let Err(error) = readiness {
                     generate = generate.on_disabled_hover_text(error.message());
@@ -471,7 +478,7 @@ impl Studio {
             }
             "Window" => {
                 for (tab, label) in [
-                    (Tab::Recipe, "Recipe"),
+                    (Tab::Recipe(self.recipe_tabs.active()), "Recipe"),
                     (Tab::Outliner, "Monuments"),
                     (Tab::Inspector, "Selection"),
                     (Tab::Queue, "Queue"),

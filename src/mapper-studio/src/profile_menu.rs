@@ -3,16 +3,15 @@ impl Studio {
     pub(super) fn profiles_menu(&mut self, ui: &mut egui::Ui) {
         if ui.button("Export recipe…").clicked() {
             ui.close();
+            let name = self.recipe_tabs.name(self.recipe_tabs.active()).to_owned();
+            let stem: String = name.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) { '_' } else { c }).collect();
+            let stem = stem.trim_end_matches([' ', '.']);
+            let stem = if stem.is_empty() { "Recipe" } else { stem };
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("Mapper Recipe", &["rec"])
-                .set_file_name("settings.rec")
+                .set_file_name(format!("{stem}.rec"))
                 .save_file()
             {
-                let name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Settings")
-                    .to_string();
                 self.status = match mapper_studio::profile::Profile::new(name, self.document_recipe().clone())
                     .save(&path)
                 {
@@ -23,7 +22,7 @@ impl Studio {
         }
         if ui
             .add_enabled(
-                self.drag_before.is_none(),
+                self.drag_before.is_none() && self.recipe_tabs.can_add(),
                 egui::Button::new("Import recipe…"),
             )
             .clicked()
@@ -34,30 +33,10 @@ impl Studio {
                 .pick_file()
             {
                 match mapper_studio::profile::Profile::load(&path) {
-                    Ok(profile) if self.generation.busy() => {
-                        self.with_recipe_draft(|studio| {
-                            studio.project = profile.recipe;
-                            studio.selected = (!studio.project.targets.is_empty()).then_some(0);
-                        });
-                        self.status = "Recipe imported for the next generation.".into();
-                    }
                     Ok(profile) => {
-                        self.plugins.cancel();
-                        self.source.cancel_inspection();
-                        if let Some(task) = &self.task {
-                            task.cancel.store(true, Ordering::Relaxed);
+                        if self.import_named_recipe(&profile.name, profile.recipe) {
+                            self.status = format!("Imported recipe '{}'.", profile.name);
                         }
-                        if let Some(task) = &self.placement_task {
-                            task.cancel.store(true, Ordering::Relaxed);
-                        }
-                        self.project = profile.recipe;
-                        self.selected = (!self.project.targets.is_empty()).then_some(0);
-                        self.layouts.clear();
-                        self.active_layout = None;
-                        self.status = format!(
-                            "Applied recipe '{}'. Undo restores the previous recipe. Build the preview to update terrain.",
-                            profile.name
-                        );
                     }
                     Err(e) => self.status = format!("Recipe import failed: {e}"),
                 }

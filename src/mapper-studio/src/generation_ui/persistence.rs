@@ -261,6 +261,7 @@ struct SavedGrid {
     alpha: usize,
 }
 const SHARED_FONT_SCHEMA: u32 = 6;
+const NAMED_RECIPES_SCHEMA: u32 = 7;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -302,6 +303,8 @@ pub(crate) struct Workspace {
     fonts: Vec<Font>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     edits: Vec<SavedEdit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recipes: Option<recipe_tabs::RecipeBook>,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -327,7 +330,7 @@ impl WorkspaceDocument {
     fn select_payloads(&self, payloads: usize) -> Result<Vec<bool>, String> {
         let mut selected = vec![false; payloads];
         let Some(saved) = &self.0 else { return Ok(selected) };
-        if !(1..=SHARED_FONT_SCHEMA).contains(&saved.schema)
+        if !(1..=NAMED_RECIPES_SCHEMA).contains(&saved.schema)
             || (!saved.edits.is_empty() && saved.schema < 3)
             || (!saved.fonts.is_empty() && saved.schema < SHARED_FONT_SCHEMA)
             || saved.fonts.len() > saved.results.len()
@@ -339,12 +342,23 @@ impl WorkspaceDocument {
         {
             return Err("Unsupported saved map workspace".into());
         }
+        if saved.schema < NAMED_RECIPES_SCHEMA
+            && (saved.recipes.is_some() || saved.queue.iter().any(|item| item.origin.is_some()))
+        {
+            return Err("Unsupported named recipes workspace".into());
+        }
+        if let Some(recipes) = &saved.recipes {
+            recipes.validate()?;
+        }
+        if saved.queue.iter().filter_map(|item| item.origin.as_ref()).any(|origin| !origin.valid()) {
+            return Err("Invalid queued recipe identity".into());
+        }
         for map in &saved.results {
             if map.map.is_none() && map.render.is_some() {
                 return Err("Saved render has no accepted map archive".into());
             }
             let font = match (map.font_ref, &map.font) {
-                (Some(index), None) if saved.schema == SHARED_FONT_SCHEMA => Some(
+                (Some(index), None) if saved.schema >= SHARED_FONT_SCHEMA => Some(
                     saved.fonts.get(index).ok_or("Saved map references a missing font")?,
                 ),
                 (Some(_), _) => return Err("Invalid saved map font reference".into()),
@@ -398,6 +412,7 @@ pub(crate) struct Capture {
 }
 pub(crate) struct Restored {
     pub recipe: Project,
+    pub recipes: recipe_tabs::RecipeBook,
     pub generation: Generation,
     pub open: Vec<u64>,
     pub active: Option<u64>,
@@ -457,6 +472,17 @@ fn restore_font<'a>(
 }
 
 impl Capture {
+    pub(crate) fn set_recipes(&mut self, recipes: &recipe_tabs::RecipeBook) -> Result<(), String> {
+        recipes.validate()?;
+        if !recipes.is_legacy_default() {
+            self.workspace.recipes = Some(recipes.clone());
+        }
+        if self.workspace.recipes.is_some() || self.workspace.queue.iter().any(|item| item.origin.is_some()) {
+            self.workspace.schema = NAMED_RECIPES_SCHEMA;
+        }
+        Ok(())
+    }
+
     pub(crate) fn encode(
         mut self,
         cancel: &impl Fn() -> bool,
@@ -544,7 +570,7 @@ impl Capture {
                         self.workspace.fonts.push(record);
                         font_refs.insert(identity, index);
                         saved.font_ref = Some(index);
-                        self.workspace.schema = SHARED_FONT_SCHEMA;
+                        self.workspace.schema = self.workspace.schema.max(SHARED_FONT_SCHEMA);
                     } else {
                         saved.font = Some(record);
                     }
@@ -617,7 +643,8 @@ impl Generation {
         }
         Ok(Capture {
             workspace: Workspace {
-                schema: if edits.is_empty() { 2 }
+                schema: if self.queue.iter().any(|item| item.origin.is_some()) { NAMED_RECIPES_SCHEMA }
+                    else if edits.is_empty() { 2 }
                     else if edits.iter().any(|edit| !edit.monuments.is_empty()) { 5 }
                     else if edits.iter().any(|edit| edit.issue.is_some()) { 4 } else { 3 },
                 results: Vec::new(),
@@ -628,6 +655,7 @@ impl Generation {
                 active,
                 fonts: Vec::new(),
                 edits,
+                recipes: None,
             },
             candidates,
         })
@@ -646,6 +674,7 @@ impl Generation {
         let Some(saved) = loaded.manifest.workspace.0 else {
             return Ok(Some(Restored {
                 recipe,
+                recipes: Default::default(),
                 generation: Self::default(),
                 open: Vec::new(),
                 active: None,
@@ -946,6 +975,7 @@ impl Generation {
         }
         Ok(Some(Restored {
             recipe,
+            recipes: saved.recipes.unwrap_or_default(),
             generation,
             open: saved.open,
             active,

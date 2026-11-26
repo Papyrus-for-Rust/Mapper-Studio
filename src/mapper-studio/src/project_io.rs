@@ -11,12 +11,14 @@ enum Completed {
         path: PathBuf,
         recipe: Box<Project>,
         revision: u64,
+        recipes_revision: u64,
     },
     Opened(Box<Opened>),
 }
 struct Opened {
     path: PathBuf,
     recipe: Project,
+    recipes: recipe_tabs::RecipeBook,
     generation: generation_ui::Generation,
     open: Vec<u64>,
     active: Option<u64>,
@@ -69,6 +71,7 @@ pub(super) struct ProjectIo {
     task: Option<Task>,
     followup: Option<Action>,
     pub saved_generation: u64,
+    pub saved_recipes: u64,
     opened: Option<Box<Opened>>,
     issue: Option<String>,
 }
@@ -100,7 +103,9 @@ impl Studio {
             return Err("A project operation is already running".into());
         }
         self.project_io.issue = None;
-        let capture = self.capture_project()?;
+        let mut capture = self.capture_project()?;
+        capture.set_recipes(&self.recipe_tabs.book)?;
+        let recipes_revision = self.recipe_tabs.revision;
         let recipe = self.document_recipe().clone();
         recipe.validate()?;
         let revision = self.generation.revision;
@@ -125,6 +130,7 @@ impl Studio {
                     path,
                     recipe: Box::new(recipe),
                     revision,
+                    recipes_revision,
                 }))
             })();
             let _ = sender.send(result);
@@ -160,6 +166,7 @@ impl Studio {
                 Ok(Some(Completed::Opened(Box::new(Opened {
                     path,
                     recipe: restored.recipe,
+                    recipes: restored.recipes,
                     generation: restored.generation,
                     open: restored.open,
                     active: restored.active,
@@ -207,9 +214,11 @@ impl Studio {
                 path,
                 recipe,
                 revision,
+                recipes_revision,
             })) => {
                 self.saved = *recipe;
                 self.project_io.saved_generation = revision;
+                self.project_io.saved_recipes = recipes_revision;
                 self.path = Some(path);
                 self.status = "Project saved".into();
                 if let Some(action) = followup {
@@ -243,6 +252,8 @@ impl Studio {
             return;
         };
         self.replace_project(opened.recipe, Some(opened.path));
+        self.recipe_tabs.book = opened.recipes;
+        self.recipe_tabs.rebuild_tabs(&mut self.dock);
         self.generation = opened.generation;
         self.generation.sync_restrictions(&self.restrictions);
         if let Some(font) = self.monument_icons.labels.source(self.project.installation.as_ref()) {
@@ -327,6 +338,7 @@ mod tests {
                 .send(Ok(Some(Completed::Opened(Box::new(Opened {
                     path: "loaded.mapper".into(),
                     recipe: incoming.clone(),
+                    recipes: Default::default(),
                     generation: Default::default(),
                     open: vec![],
                     active: None,
@@ -347,6 +359,42 @@ mod tests {
                 assert!(app.project_io.opened.is_none());
             }
         }
+    }
+
+    #[test]
+    fn named_recipes_round_trip_through_project_io() {
+        let ctx = egui::Context::default();
+        let mut app = crate::tests::fixture(&ctx);
+        let first = app.project.clone();
+        let mut other = first.clone();
+        other.master_seed = 77234;
+        other.refresh_inherited_seeds();
+        assert!(app.import_named_recipe("Island Test", other.clone()));
+        let active = app.recipe_tabs.active();
+        assert!(app.dirty());
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("named-recipes.mapper");
+        app.save_project_to(path.clone(), &ctx).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while app.project_io.busy() && std::time::Instant::now() < deadline {
+            app.poll_project_io(&ctx);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(!app.dirty(), "{}", app.status);
+        app.replace_project(first.clone(), None);
+        app.open_project_from(path, &ctx);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while app.project_io.busy() && std::time::Instant::now() < deadline {
+            app.poll_project_io(&ctx);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(app.recipe_tabs.active(), active);
+        assert_eq!(app.recipe_tabs.name(active), "Island Test");
+        assert_eq!(app.document_recipe(), &other);
+        assert_eq!(app.recipe_by_id(FIRST_RECIPE), &first);
+        assert!(app.dock.find_tab(&Tab::Recipe(active)).is_some());
+        assert!(app.dock.find_tab(&Tab::Recipe(FIRST_RECIPE)).is_some());
+        assert!(!app.dirty());
     }
 
     #[test]
@@ -427,6 +475,7 @@ mod tests {
                 path: path.clone(),
                 recipe: Box::new(recipe.clone()),
                 revision: app.generation.revision,
+                recipes_revision: 0,
             })))
             .unwrap();
         app.poll_project_io(&ctx);

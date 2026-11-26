@@ -2,6 +2,8 @@
 #[path = "../examples/support/prepared_assets.rs"]
 mod prepared_assets;
 mod generation_ui;
+mod recipe_tabs;
+use recipe_tabs::FIRST_RECIPE;
 mod tool_icons;
 mod path_editor;
 mod map_label_panel;
@@ -65,7 +67,7 @@ fn ocean_background(palette:Option<&mapper_studio::terrain_palette::Palette>,col
 enum Tab {
     Map,
     Generated(u64),
-    Recipe,
+    Recipe(u64),
     Outliner,
     Inspector,
     Queue,
@@ -78,7 +80,7 @@ fn layout() -> DockState<Tab> {
     let [workspace, _recipe] = dock.main_surface_mut().split_left(
         NodeIndex::root(),
         0.22,
-        vec![Tab::Recipe],
+        vec![Tab::Recipe(FIRST_RECIPE)],
     );
     let [center, outliner] = dock.main_surface_mut().split_right(
         workspace,
@@ -129,6 +131,7 @@ struct Studio {
     map_archive: map_archive::Panel,
     project: Project,
     saved: Project,
+    recipe_tabs: recipe_tabs::RecipeTabs,
     path: Option<PathBuf>,
     history: History,
     dock: DockState<Tab>,
@@ -231,6 +234,7 @@ impl Studio {
         let mut app = Self {
             project_io:Default::default(),
             saved: p.clone(),
+            recipe_tabs: Default::default(),
             project: p,
             path: None,
             history: History::default(),
@@ -427,7 +431,9 @@ impl Studio {
         }
     }
     fn dirty(&self) -> bool {
-        self.document_recipe() != &self.saved || self.generation.revision!=self.project_io.saved_generation
+        self.document_recipe() != &self.saved
+            || self.generation.revision != self.project_io.saved_generation
+            || self.recipe_tabs.revision != self.project_io.saved_recipes
     }
     fn pristine_new_project(&self) -> bool {
         self.path.is_none() && !self.history.can_undo() && !self.history.can_redo() && !self.dirty()
@@ -1062,6 +1068,9 @@ impl Studio {
         self.cancel_generation();
         self.generation = Default::default();
         self.project_io.saved_generation = 0;
+        self.project_io.saved_recipes = 0;
+        self.recipe_tabs = Default::default();
+        self.recipe_settings_open = false;
         self.dock = layout();
         self.requested_tab = None;
         if let Some(task) = &self.task {
@@ -2236,6 +2245,9 @@ impl<'a> Tabs<'a> {
     }
 
     fn finish(mut self, dock: &mut DockState<Tab>) {
+        if let Some((anchor, duplicate)) = self.studio.recipe_tabs.pending_new.take() {
+            self.studio.add_recipe_tab(anchor, duplicate, dock);
+        }
         for tab in self.closing {
             let Some(path) = dock.find_tab(&tab) else { continue; };
             if self.map_count > 1 {
@@ -2254,16 +2266,37 @@ impl TabViewer for Tabs<'_> {
     }
     fn on_tab_button(&mut self, tab: &mut Tab, response: &egui::Response) {
         workbench_style::finish_dock_title(response);
+        if let Tab::Recipe(id) = *tab {
+            if response.clicked() || response.double_clicked() {
+                self.studio.activate_recipe(id);
+            }
+            if response.double_clicked() {
+                self.studio.recipe_tabs.begin_rename(id);
+            }
+            let hint = if self.studio.recipe_tabs.active() == id && self.studio.recipe_tabs.multiple() {
+                "Active recipe for the Generate menu and Ctrl-clicked seeds. Double-click to rename."
+            } else {
+                "Click to activate. Double-click to rename."
+            };
+            response.clone().on_hover_text(hint);
+        }
         if let Some((_, leaf)) = self.active_tabs.iter().find(|(active, _)| active == tab) {
             workbench_style::join_dock_tab(response, *leaf);
         }
     }
     fn title(&mut self, t: &mut Tab) -> egui::WidgetText {
         if let Tab::Generated(id) = *t { return self.studio.generated_title(id).into(); }
+        if let Tab::Recipe(id) = *t {
+            let mut title = egui::RichText::new(self.studio.recipe_tabs.name(id)).size(16.).strong();
+            if self.studio.recipe_tabs.multiple() && id == self.studio.recipe_tabs.active() {
+                title = title.underline();
+            }
+            return title.into();
+        }
         let title = match t {
             Tab::Map => "Recipe preview",
             Tab::Generated(_) => unreachable!(),
-            Tab::Recipe => "Recipe",
+            Tab::Recipe(_) => unreachable!(),
             Tab::Outliner => "Monuments",
             Tab::Inspector => "Selection",
             Tab::Queue => "Queue",
@@ -2271,12 +2304,22 @@ impl TabViewer for Tabs<'_> {
             Tab::Plugins => "Plugins",
             Tab::Nodes => "Nodes",
         };
-        if *t == Tab::Recipe {
-            egui::RichText::new(title).size(16.).strong().into()
-        } else if matches!(t, Tab::Outliner | Tab::Map) {
+        if matches!(t, Tab::Outliner | Tab::Map) {
             egui::RichText::new(title).strong().into()
         } else {
             title.into()
+        }
+    }
+    fn context_menu(&mut self, ui: &mut egui::Ui, tab: &mut Tab, _: egui_dock::NodePath) {
+        if let Tab::Recipe(id) = *tab {
+            if ui.button("Rename…").clicked() {
+                self.studio.recipe_tabs.begin_rename(id);
+                ui.close();
+            }
+            if ui.add_enabled(self.studio.recipe_tabs.can_add(), egui::Button::new("Duplicate")).clicked() {
+                self.studio.recipe_tabs.pending_new = Some((id, true));
+                ui.close();
+            }
         }
     }
     fn ui(&mut self, ui: &mut egui::Ui, t: &mut Tab) {
@@ -2284,9 +2327,10 @@ impl TabViewer for Tabs<'_> {
         match t {
             Tab::Map => self.studio.map(ui),
             Tab::Generated(id) => self.studio.generated_map(ui, *id),
-            Tab::Recipe => {
-                self.studio.recipe_generate(ui);
-                self.studio.recipe(ui);
+            Tab::Recipe(id) => {
+                self.studio.recipe_generate_for(ui, *id);
+                let ctx = ui.ctx().clone();
+                self.studio.with_recipe_editor(*id, &ctx, |studio| studio.recipe_controls(ui));
             }
             Tab::Outliner => {
                 if let Some(id) = self.active_map { self.studio.outliner(ui, Some(id)); }
@@ -2319,7 +2363,7 @@ impl TabViewer for Tabs<'_> {
         matches!(tab, Tab::Generated(_) | Tab::Nodes) || (*tab == Tab::Map && self.map_count > 1)
     }
     fn scroll_bars(&self, tab: &Tab) -> [bool; 2] {
-        [!matches!(tab, Tab::Nodes | Tab::Recipe | Tab::Queue); 2]
+        [!matches!(tab, Tab::Nodes | Tab::Recipe(_) | Tab::Queue); 2]
     }
     fn on_close(&mut self, tab: &mut Tab) -> OnCloseResponse {
         if *tab == Tab::Nodes {
@@ -2466,7 +2510,7 @@ impl eframe::App for Studio {
         self.apply_prepared_recipe_defaults();
         self.rails.tick(&self.project,self.source.bound_root(&self.project).map(|p|p.to_owned()),self.prefabs.catalog(&self.project),self.prefabs.bindings(&self.project),&ctx);
         self.decoration_panel.tick(
-            &self.project,
+            self.generation.draft().unwrap_or(&self.project),
             self.source.bound_root(&self.project).map(|p| p.to_owned()),
             self.prefabs.catalog(&self.project),
             self.prefabs.bindings(&self.project),
@@ -2595,7 +2639,9 @@ impl eframe::App for Studio {
         self.camera.end_frame(&ctx);
         self.dock = if self.reset_layout {
             self.reset_layout = false;
-            layout()
+            let mut layout = layout();
+            self.recipe_tabs.rebuild_tabs(&mut layout);
+            layout
         } else {
             dock
         };
@@ -2608,6 +2654,7 @@ impl eframe::App for Studio {
         self.generation.finish_preview_frame(&self.dock);
         self.installation_setup_window(&ctx);
         self.recipe_settings_window(&ctx);
+        self.recipe_tabs.rename_window(&ctx);
         self.settings_window(&ctx);
         self.support_snapshot_window(&ctx);
         let can_restart = self.updates.awaiting_restart() && !self.dirty() && !self.generation_in_progress()
@@ -2754,6 +2801,7 @@ mod tests {
             project_io:Default::default(),
             map_archive: Default::default(),
             saved: project.clone(),
+            recipe_tabs: Default::default(),
             preview: Some(Preview {
                 ordered_terrain: false,
                 raw_source: None,
