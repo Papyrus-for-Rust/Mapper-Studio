@@ -125,7 +125,7 @@ fn preview_layout(ui: &mut egui::Ui, layout: &monument_addons::PrefabLayout) {
     ui.weak(if layout.authored_anchor {
         "Using the stock monument in the source file as the pivot."
     } else {
-        "Using the prefab origin as the monument pivot."
+        "This prefab has no matching stock monument. Use a .map to read the original position and rotation."
     });
     let (_, painter) = ui.allocate_painter(
         egui::vec2(ui.available_width(), 132.),
@@ -686,7 +686,7 @@ impl ContentPanel {
                 }
                 ui.horizontal(|ui| {
                     let add = ui.add_enabled(available_anchor.is_some() && settings.task.is_none(), egui::Button::new("Import layout…"))
-                        .on_hover_text("Choose a RustEdit 1 .prefab, or a .map or .mapperasset containing this stock monument.")
+                        .on_hover_text("Export a RustEdit .map containing this stock monument and the objects you want to attach. Mapper aligns the objects to the stock monument.")
                         .on_disabled_hover_text(if available_anchor.is_none() {
                             "Prepare this monument’s Rust installation first."
                         } else {
@@ -694,7 +694,10 @@ impl ContentPanel {
                         });
                     if add.clicked()
                         && let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Monument layout", &["prefab", "map", "mapperasset"]).pick_file()
+                            .add_filter("RustEdit layout map", &["map"])
+                            .add_filter("Mapper layout package", &["mapperasset"])
+                            .add_filter("RustEdit 1 prefab", &["prefab"])
+                            .pick_file()
                         && let (Some(anchor), Some(ids)) = (available_anchor, identities.as_ref())
                     {
                         settings.message.clear();
@@ -736,8 +739,13 @@ impl ContentPanel {
                     preview_layout(ui, preview);
                     let discard = ui.horizontal(|ui| {
                         let idle = settings.task.is_none();
+                        let label = if preview.authored_anchor {
+                            "Save layout"
+                        } else {
+                            "Save using prefab origin"
+                        };
                         let save = ui.add_enabled(idle && available_anchor == Some(preview.addon.anchor_id),
-                            egui::Button::new("Save layout")).clicked();
+                            egui::Button::new(label)).clicked();
                         let clear = ui.add_enabled(idle, egui::Button::new("Discard preview")).clicked();
                         if save {
                             let addon = preview.addon.clone();
