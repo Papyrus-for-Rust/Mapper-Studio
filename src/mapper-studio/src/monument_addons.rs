@@ -1,5 +1,8 @@
 //! Portable prefab attachments for generated monument roots.
-use crate::content_package::{Binding, Imported};
+use crate::{
+    content_package::{Binding, Imported},
+    rustedit_prefab::Source,
+};
 use papyrus_terrain::{
     content::{self, Vector},
     environment::{multiply, rotate},
@@ -352,13 +355,25 @@ pub fn import(item: &Imported, name: String, anchor_index: usize) -> Result<AddO
     }
     let binding = Binding::AddOn { anchor_index };
     let local = content::compose(&item.map, binding.composition(), Vector::default(), 0.)?;
+    build_layout(
+        name, item.manifest.source_sha256.clone(), anchor_index,
+        local.anchor_id.ok_or("Stock monument anchor is missing")?, local.prefabs,
+    )
+}
+
+fn build_layout(
+    name: String,
+    source_sha256: String,
+    anchor_index: usize,
+    anchor_id: u32,
+    prefabs: Vec<content::Prefab>,
+) -> Result<AddOn, String> {
     let addon = AddOn {
         name,
-        source_sha256: item.manifest.source_sha256.clone(),
+        source_sha256,
         anchor_index,
-        anchor_id: local.anchor_id.ok_or("Stock monument anchor is missing")?,
-        children: local
-            .prefabs
+        anchor_id,
+        children: prefabs
             .into_iter()
             .map(|p| Child {
                 id: p.id,
@@ -375,6 +390,62 @@ pub fn import(item: &Imported, name: String, anchor_index: usize) -> Result<AddO
     };
     validate(std::slice::from_ref(&addon))?;
     Ok(addon)
+}
+
+#[derive(Debug)]
+pub struct PrefabLayout {
+    pub addon: AddOn,
+    pub authored_anchor: bool,
+    pub has_unapplied_metadata: bool,
+}
+
+/// Normalize a RustEdit 1 layout into the same child records as map imports.
+pub fn import_rustedit_layout(
+    source: Source,
+    name: String,
+    anchor_id: u32,
+) -> Result<PrefabLayout, String> {
+    if !source.terrain.is_empty() {
+        return Err("This prefab has terrain images. Import it as a custom monument through the map-package workflow to apply terrain.".into());
+    }
+    let prefab = source.prefab;
+    let mut matching = prefab.prefabs.iter().enumerate().filter(|(_, part)| part.id == anchor_id);
+    let anchor = matching.next().map(|(index, _)| index);
+    if matching.next().is_some() {
+        return Err("This prefab contains more than one copy of the selected stock monument.".into());
+    }
+    let children = prefab.prefabs.len() - usize::from(anchor.is_some());
+    if !(1..=MAX_CHILDREN).contains(&children) {
+        return Err(format!("A layout needs 1–{MAX_CHILDREN} child objects."));
+    }
+    if prefab.prefabs.iter().any(|part| part.unknown_fields != 0) {
+        return Err("Layout objects contain unsupported RustEdit fields.".into());
+    }
+
+    let map = content::MapContent {
+        size: 1,
+        prefabs: prefab.prefabs,
+        paths: Vec::new(),
+        layers: Vec::new(),
+        unknown_fields: 0,
+    };
+    let mode = match anchor {
+        Some(index) => content::Composition::AddOn { anchor: index },
+        None => content::Composition::Standalone { pivot: Vector::default(), authoring_yaw: 0. },
+    };
+    let local = content::compose(&map, mode, Vector::default(), 0.)?;
+    let addon = build_layout(
+        name,
+        format!("{:x}", Sha256::digest(&source.bytes)),
+        anchor.unwrap_or_default(),
+        anchor_id,
+        local.prefabs,
+    )?;
+    Ok(PrefabLayout {
+        addon,
+        authored_anchor: anchor.is_some(),
+        has_unapplied_metadata: prefab.other_fields != 0 || !prefab.terrain_descriptor.is_empty(),
+    })
 }
 
 /// Use the selected installation prefab as the overlay frame.
@@ -551,6 +622,50 @@ mod tests {
         other.choose_monument_overlay(11, None).unwrap();
         assert!(reopened.resolve(&other).unwrap().is_empty());
         assert_eq!(reopened.versions(11).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn rustedit_layout_uses_the_stock_anchor_when_present() {
+        let object = content::Prefab {
+            category: "Decor".into(),
+            id: 12,
+            position: Vector { x: 2., y: 3., z: 4. },
+            rotation: Vector::default(),
+            scale: Vector { x: 1., y: 1., z: 1. },
+            unknown_fields: 0,
+        };
+        let stock = content::Prefab {
+            id: 11,
+            position: Vector { x: 10., y: 20., z: 30. },
+            rotation: Vector { x: 0., y: 90., z: 0. },
+            ..object.clone()
+        };
+        let source = |prefabs| Source {
+            bytes: vec![1, 2, 3],
+            prefab: content::RustEditPrefab {
+                prefabs,
+                terrain_descriptor: vec![8, 80],
+                other_fields: 2,
+            },
+            terrain: vec![],
+        };
+        let local = import_rustedit_layout(source(vec![object.clone()]), "Local".into(), 11).unwrap();
+        assert!(!local.authored_anchor);
+        assert!(local.has_unapplied_metadata);
+        assert_eq!(local.addon.children[0].offset, [2., 3., 4.]);
+        let moved = content::Prefab {
+            position: Vector { x: 14., y: 23., z: 28. },
+            rotation: Vector { x: 0., y: 90., z: 0. },
+            ..object
+        };
+        let anchored = import_rustedit_layout(source(vec![stock.clone(), moved]), "Anchored".into(), 11).unwrap();
+        assert!(anchored.authored_anchor);
+        assert_eq!(anchored.addon.children.len(), 1);
+        for (value, expected) in anchored.addon.children[0].offset.into_iter().zip([2., 3., 4.]) {
+            assert!((value - expected).abs() < 0.0001);
+        }
+        assert_eq!(anchored.addon.children[0].rotation, [0., 0., 0.]);
+        assert!(import_rustedit_layout(source(vec![stock.clone(), stock]), "Duplicate".into(), 11).is_err());
     }
 
     #[test]

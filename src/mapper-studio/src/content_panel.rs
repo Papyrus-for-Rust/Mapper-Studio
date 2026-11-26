@@ -61,8 +61,13 @@ impl Drop for ImportTask {
     }
 }
 
+enum LayoutResult {
+    Versions(Vec<monument_addons::Version>),
+    Preview(monument_addons::PrefabLayout),
+}
+
 struct OverlayTask {
-    receiver: Receiver<Result<Vec<monument_addons::Version>, String>>,
+    receiver: Receiver<Result<LayoutResult, String>>,
     cancel: Arc<AtomicBool>,
     importing: bool,
 }
@@ -71,7 +76,7 @@ impl OverlayTask {
     fn start(
         ctx: &egui::Context,
         importing: bool,
-        work: impl FnOnce(&AtomicBool) -> Result<Vec<monument_addons::Version>, String> + Send + 'static,
+        work: impl FnOnce(&AtomicBool) -> Result<LayoutResult, String> + Send + 'static,
     ) -> Result<Self, String> {
         let (sender, receiver) = mpsc::channel();
         let cancel = Arc::new(AtomicBool::new(false));
@@ -100,8 +105,59 @@ struct MonumentSettings {
     task: Option<OverlayTask>,
     loaded_anchor: Option<u32>,
     versions: Vec<monument_addons::Version>,
+    preview: Option<monument_addons::PrefabLayout>,
     message: String,
 }
+
+fn save_layout(addon: &monument_addons::AddOn, signal: &AtomicBool) -> Result<LayoutResult, String> {
+    let cancelled = || signal.load(Ordering::Relaxed);
+    if cancelled() {
+        return Err("Layout import cancelled".into());
+    }
+    let library = monument_addons::Library::local()?;
+    library.store(addon)?;
+    library.versions_cancellable(addon.anchor_id, cancelled).map(LayoutResult::Versions)
+}
+
+fn preview_layout(ui: &mut egui::Ui, layout: &monument_addons::PrefabLayout) {
+    let children = &layout.addon.children;
+    ui.label(format!("{} · {} objects", layout.addon.name, children.len()));
+    ui.weak(if layout.authored_anchor {
+        "Using the stock monument in the source file as the pivot."
+    } else {
+        "Using the prefab origin as the monument pivot."
+    });
+    let (_, painter) = ui.allocate_painter(
+        egui::vec2(ui.available_width(), 132.),
+        egui::Sense::hover(),
+    );
+    let rect = painter.clip_rect();
+    let (min, max) = children.iter().fold((egui::Vec2::ZERO, egui::Vec2::ZERO), |(min, max), child| {
+        let point = egui::vec2(child.offset[0], -child.offset[2]);
+        (min.min(point), max.max(point))
+    });
+    let extent = (max - min).max(egui::Vec2::splat(1.));
+    let frame = rect.shrink(10.);
+    let scale = (frame.width() / extent.x).min(frame.height() / extent.y).max(0.);
+    let project = |point: egui::Vec2| frame.center() + (point - (min + max) * 0.5) * scale;
+    let theme = ui.visuals();
+    painter.rect_filled(rect, 5., theme.extreme_bg_color);
+    for child in children.iter() {
+        painter.circle_filled(
+            project(egui::vec2(child.offset[0], -child.offset[2])),
+            1.6,
+            theme.hyperlink_color,
+        );
+    }
+    let origin = project(egui::Vec2::ZERO);
+    let stroke = egui::Stroke::new(1.5, theme.text_color());
+    painter.hline(origin.x - 5. ..=origin.x + 5., origin.y, stroke);
+    painter.vline(origin.x, origin.y - 5. ..=origin.y + 5., stroke);
+    if layout.has_unapplied_metadata {
+        ui.weak("Saving the layout keeps the placed objects. RustEdit metadata is omitted.");
+    }
+}
+
 pub(super) struct ContentPanel {
     item: Option<Arc<Imported>>,
     rustedit_prefab: Option<(String, rustedit_prefab::Source)>,
@@ -471,7 +527,7 @@ mod tests {
         render(&mut panel, &mut project, vec![]);
         click(&mut panel, &mut project, "Loading versions…");
         click(&mut panel, &mut project, "Stock monument");
-        sender.send(Ok(Vec::new())).unwrap();
+        sender.send(Ok(LayoutResult::Versions(Vec::new()))).unwrap();
         render(&mut panel, &mut project, vec![]);
         assert!(project.monument_overlay_choices.is_empty());
         assert_eq!(panel.monument_settings_recipe(), Some(crate::FIRST_RECIPE));
@@ -493,6 +549,7 @@ impl ContentPanel {
             task: None,
             loaded_anchor: None,
             versions: Vec::new(),
+            preview: None,
             message: String::new(),
         });
     }
@@ -521,6 +578,7 @@ impl ContentPanel {
         if settings.loaded_anchor != anchor {
             settings.loaded_anchor = anchor;
             settings.versions.clear();
+            settings.preview = None;
             settings.task = None;
             if let Some(anchor) = anchor {
                 let embedded: Vec<_> = project.monument_addons.iter()
@@ -532,7 +590,7 @@ impl ContentPanel {
                         if cancelled() { return Err("Layout library scan cancelled".into()); }
                         library.store(addon)?;
                     }
-                    library.versions_cancellable(anchor, cancelled)
+                    library.versions_cancellable(anchor, cancelled).map(LayoutResult::Versions)
                 }) {
                     Ok(task) => settings.task = Some(task),
                     Err(error) => settings.message = error,
@@ -549,10 +607,14 @@ impl ContentPanel {
                 let importing = task.importing;
                 settings.task = None;
                 match result {
-                    Ok(versions) => {
+                    Ok(LayoutResult::Versions(versions)) => {
                         settings.versions = versions;
-                        if importing { settings.message = "Layout saved to the library".into(); }
+                        if importing {
+                            settings.preview = None;
+                            settings.message = "Layout saved to the library".into();
+                        }
                     }
+                    Ok(LayoutResult::Preview(preview)) => settings.preview = Some(preview),
                     Err(error) => settings.message = error,
                 }
             }
@@ -624,7 +686,7 @@ impl ContentPanel {
                 }
                 ui.horizontal(|ui| {
                     let add = ui.add_enabled(available_anchor.is_some() && settings.task.is_none(), egui::Button::new("Import layout…"))
-                        .on_hover_text("Choose a .map or .mapperasset containing this stock monument and the prefabs to attach.")
+                        .on_hover_text("Choose a RustEdit 1 .prefab, or a .map or .mapperasset containing this stock monument.")
                         .on_disabled_hover_text(if available_anchor.is_none() {
                             "Prepare this monument’s Rust installation first."
                         } else {
@@ -632,20 +694,26 @@ impl ContentPanel {
                         });
                     if add.clicked()
                         && let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Monument layout", &["map", "mapperasset"]).pick_file()
+                            .add_filter("Monument layout", &["prefab", "map", "mapperasset"]).pick_file()
                         && let (Some(anchor), Some(ids)) = (available_anchor, identities.as_ref())
                     {
                         settings.message.clear();
+                        settings.preview = None;
                         let ids = Arc::clone(ids);
                         match OverlayTask::start(ctx, true, move |signal| {
                             let cancelled = || signal.load(Ordering::Relaxed);
+                            if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("prefab")) {
+                                let name = path.file_stem().and_then(|name| name.to_str())
+                                    .unwrap_or("RustEdit layout").to_owned();
+                                let source = rustedit_prefab::Source::read(&path, cancelled)?;
+                                let preview = monument_addons::import_rustedit_layout(source, name, anchor)?;
+                                ids.addons.check(std::slice::from_ref(&preview.addon))?;
+                                return Ok(LayoutResult::Preview(preview));
+                            }
                             let item = Imported::read_file(&path, cancelled)?;
                             let addon = monument_addons::import_for_anchor(&item, anchor)?;
                             ids.addons.check(std::slice::from_ref(&addon))?;
-                            if cancelled() { return Err("Layout import cancelled".into()); }
-                            let library = monument_addons::Library::local()?;
-                            library.store(&addon)?;
-                            library.versions_cancellable(anchor, cancelled)
+                            save_layout(&addon, signal)
                         }) {
                             Ok(task) => settings.task = Some(task),
                             Err(error) => settings.message = error,
@@ -663,6 +731,28 @@ impl ContentPanel {
                         }
                     }
                 });
+                if let Some(preview) = &settings.preview {
+                    ui.separator();
+                    preview_layout(ui, preview);
+                    let discard = ui.horizontal(|ui| {
+                        let idle = settings.task.is_none();
+                        let save = ui.add_enabled(idle && available_anchor == Some(preview.addon.anchor_id),
+                            egui::Button::new("Save layout")).clicked();
+                        let clear = ui.add_enabled(idle, egui::Button::new("Discard preview")).clicked();
+                        if save {
+                            let addon = preview.addon.clone();
+                            settings.message.clear();
+                            match OverlayTask::start(ctx, true, move |signal| save_layout(&addon, signal)) {
+                                Ok(task) => settings.task = Some(task),
+                                Err(error) => settings.message = error,
+                            }
+                        }
+                        !save && clear
+                    }).inner;
+                    if discard {
+                        settings.preview = None;
+                    }
+                }
                 if !settings.message.is_empty() { ui.label(&settings.message); }
             });
         if !open { self.monument_settings = None; }
