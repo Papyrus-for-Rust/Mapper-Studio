@@ -4,6 +4,8 @@ use std::sync::mpsc::{Receiver, TryRecvError};
 #[derive(Default)]
 pub(super) struct QueueExecution {
     pub(super) drain_parallel: bool,
+    pub(super) requested_parallel: std::collections::BTreeSet<u64>,
+    pub(super) next_primary: Option<u64>,
     pub(super) primary_paused: bool,
     pub(super) advance_pending: bool,
     pub(super) start_pending: Option<bool>,
@@ -428,10 +430,31 @@ impl Studio {
             .and_then(|job| job.live.as_ref())
     }
 
-    pub(super) fn can_start_queue_job(&self, id: u64) -> bool {
+    pub(super) fn primary_waits_for_extra(&self) -> bool {
+        self.generation.execution.extra.is_some()
+            && self.preferences.generation_resources.effective_workers() < 2
+    }
+
+    fn extra_lane_available(&self) -> bool {
         !self.generation.queue_paused
             && self.generation.execution.extra.is_none()
             && self.preferences.generation_resources.effective_workers() >= 2
+    }
+
+    pub(crate) fn run_blocker(&self, count: usize) -> Option<&'static str> {
+        if self.generation.queue_paused {
+            return Some("Resume the queue before starting maps.");
+        }
+        let slot_available = if self.generation.busy() {
+            self.extra_lane_available()
+        } else {
+            !self.primary_waits_for_extra()
+        };
+        (count == 1 && !slot_available).then_some("No generation slot is available. Use Queue to add this map.")
+    }
+
+    pub(super) fn can_start_queue_job(&self, id: u64) -> bool {
+        self.extra_lane_available()
             && self.generation.queue.iter().any(|job| job.id == id && job.state == State::Waiting)
             // Applying a map edit uses the accepted route layout owned by the editor.
             && self.generation.edits.values().all(|edit| edit.job != Some(id))
@@ -601,8 +624,11 @@ impl Studio {
             {
                 *start += at.elapsed();
             }
-            if let Some(reuse_render) = self.generation.execution.start_pending.take() {
-                self.start_generation_candidate(ctx, reuse_render);
+            if self.generation.execution.start_pending.is_some() {
+                if !self.primary_waits_for_extra() {
+                    let reuse_render = self.generation.execution.start_pending.take().unwrap();
+                    self.start_generation_candidate(ctx, reuse_render);
+                }
             } else if std::mem::take(&mut self.generation.execution.advance_pending) {
                 self.advance_generation(ctx);
             } else if std::mem::take(&mut self.generation.execution.placement_pending) {
@@ -619,18 +645,42 @@ impl Studio {
                 outcome => self.finish_extra_queue_job(job, outcome, ctx),
             }
         }
-        if self.generation.execution.drain_parallel && self.generation.execution.extra.is_none() {
-            let waiting = self
-                .generation
-                .queue
-                .iter()
-                .find(|item| item.state == State::Waiting)
-                .map(|item| item.id);
-            if let Some(id) = waiting {
-                self.start_queue_job(id, ctx);
+        self.start_requested_parallel(ctx);
+        let execution = &self.generation.execution;
+        if !self.generation.queue_paused && execution.extra.is_none()
+            && (execution.start_pending.is_some() || execution.advance_pending)
+        {
+            ctx.request_repaint();
+        }
+    }
+
+    pub(super) fn start_requested_parallel(&mut self, ctx: &egui::Context) {
+        let execution = &mut self.generation.execution;
+        let queue = &self.generation.queue;
+        execution.requested_parallel.retain(|id| {
+            queue.iter().any(|item| item.id == *id && item.state == State::Waiting)
+        });
+        if !queue.iter().any(|item| item.state == State::Waiting) {
+            execution.drain_parallel = false;
+            return;
+        }
+        if !self.extra_lane_available() {
+            return;
+        }
+        let execution = &self.generation.execution;
+        let requested = self.generation.queue.iter().find(|item| {
+            execution.requested_parallel.contains(&item.id) && self.can_start_queue_job(item.id)
+        });
+        let selected = requested.or_else(|| {
+            if execution.drain_parallel {
+                self.generation.queue.iter().find(|item| self.can_start_queue_job(item.id))
             } else {
-                self.generation.execution.drain_parallel = false;
+                None
             }
+        }).map(|item| item.id);
+        if let Some(id) = selected {
+            self.generation.execution.requested_parallel.remove(&id);
+            self.start_queue_job(id, ctx);
         }
     }
 
@@ -743,6 +793,89 @@ impl Studio {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn run_batch_uses_free_lanes_without_draining_the_ordinary_queue() {
+        let ctx = egui::Context::default();
+        let mut app = crate::tests::fixture(&ctx);
+        if mapper_studio::generation_resources::available_workers() < 2 {
+            return;
+        }
+        app.preferences.generation_resources.cpu_workers = 2;
+        let recipe_id = app.recipe_tabs.active();
+        let recipe = app.document_recipe().clone();
+        let batch = |count, nonce| BatchPlan {
+            count,
+            nonce,
+            random_master: true,
+            ..BatchPlan::exact(recipe.clone())
+        };
+        app.submit_generation(recipe_id, batch(2, 181), Submission::Queue, &ctx);
+        let first = app.generation.queue[0].id;
+        let ordinary = app.generation.queue[1].id;
+        assert_eq!(app.queue_primary_id(), Some(first));
+        assert_eq!(app.generation.queue[1].state, State::Waiting);
+        assert!(app.generation.execution.extra.is_none());
+
+        app.submit_generation(recipe_id, batch(3, 733), Submission::Run, &ctx);
+        let run: Vec<_> = app.generation.queue[2..].iter().map(|item| item.id).collect();
+        assert_eq!(app.generation.execution.extra_id(), Some(run[0]));
+        assert_eq!(app.queue_primary_id(), Some(first));
+        assert_eq!(app.generation.queue[1].state, State::Waiting);
+
+        app.submit_generation(recipe_id, BatchPlan::exact(recipe.clone()), Submission::Run, &ctx);
+        assert_eq!(app.generation.queue.len(), 5);
+        assert!(app.status.contains("No generation slot"));
+
+        assert!(app.cancel_extra_queue_job(run[0]));
+        app.start_requested_parallel(&ctx);
+        assert_eq!(app.generation.execution.extra_id(), Some(run[1]));
+        assert!(app.generation.execution.requested_parallel.contains(&run[2]));
+        assert_eq!(app.generation.queue[1].id, ordinary);
+        assert_eq!(app.generation.queue[1].state, State::Waiting);
+
+        app.cancel_queued_map(first, &ctx);
+        assert_eq!(app.queue_primary_id(), Some(run[2]));
+        assert!(app.generation.queue.iter().any(|item| item.id == ordinary && item.state == State::Waiting));
+        assert!(!app.generation.execution.requested_parallel.contains(&run[2]));
+
+        app.submit_generation(recipe_id, batch(2, 812), Submission::Run, &ctx);
+        let waiting = app.generation.queue.last().unwrap().id;
+        assert!(app.generation.execution.requested_parallel.contains(&waiting));
+        app.cancel_queued_map(waiting, &ctx);
+        assert!(!app.generation.execution.requested_parallel.contains(&waiting));
+        app.run_queued_map_next(ordinary, &ctx);
+        app.cancel_queued_map(run[2], &ctx);
+        assert_eq!(app.queue_primary_id(), Some(ordinary));
+        app.cancel_generation();
+        assert!(app.generation.execution.requested_parallel.is_empty());
+    }
+
+    #[test]
+    fn paused_queue_accepts_a_batch_without_starting_or_partially_adding_it() {
+        let ctx = egui::Context::default();
+        let mut app = crate::tests::fixture(&ctx);
+        app.generation.queue_paused = true;
+        let recipe_id = app.recipe_tabs.active();
+        let recipe = app.document_recipe().clone();
+        let batch = |count| BatchPlan {
+            count,
+            nonce: 181,
+            random_master: true,
+            ..BatchPlan::exact(recipe.clone())
+        };
+        app.submit_generation(recipe_id, batch(2), Submission::Run, &ctx);
+        assert!(app.generation.queue.is_empty());
+        assert!(app.generation.queue_paused);
+        app.submit_generation(recipe_id, batch(2), Submission::Queue, &ctx);
+        assert_eq!(app.generation.queue.len(), 2);
+        assert!(app.task.is_none());
+        app.submit_generation(recipe_id, batch(MAX_BATCH - 1), Submission::Queue, &ctx);
+        assert_eq!(app.generation.queue.len(), 2);
+        assert!(app.status.contains("too few queue slots"));
+        assert!(app.generation.queue_paused);
+        app.cancel_generation();
+    }
 
     #[test]
     fn queue_pause_holds_a_new_batch_until_resumed() {
