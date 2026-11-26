@@ -128,6 +128,10 @@ pub struct Preferences {
     pub monument_splats: bool,
     pub monument_icons: crate::monument_icons::Overrides,
     pub monument_markers: crate::map_labels::Mode,
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub monument_display_names: std::collections::BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub hidden_monument_markers: std::collections::BTreeSet<String>,
     pub decoration_models: bool,
     pub export_resolution: ImageResolution,
     pub image_render: crate::image_render::Settings,
@@ -158,6 +162,8 @@ impl Default for Preferences {
             monument_splats: true,
             monument_icons: Default::default(),
             monument_markers: Default::default(),
+            monument_display_names: Default::default(),
+            hidden_monument_markers: Default::default(),
             decoration_models: true,
             export_resolution: Default::default(),
             image_render: Default::default(),
@@ -169,6 +175,28 @@ impl Default for Preferences {
     }
 }
 impl Preferences {
+    pub fn monument_label<'a>(&'a self, path: Option<&str>, fallback: &'a str) -> &'a str {
+        path.and_then(|path| self.monument_display_names.get(path))
+            .map_or(fallback, String::as_str)
+    }
+
+    pub fn monument_marker_hidden(&self, path: Option<&str>) -> bool {
+        path.is_some_and(|path| self.hidden_monument_markers.contains(path))
+    }
+
+    fn validate_monument_display(&self) -> Result<(), String> {
+        if self.monument_display_names.len() > 128 || self.hidden_monument_markers.len() > 128
+            || self.monument_display_names.iter().any(|(path, name)| {
+                !crate::monument_icons::valid_path(path) || name.trim().is_empty()
+                    || name.len() > 128 || name.chars().any(char::is_control)
+            })
+            || self.hidden_monument_markers.iter().any(|path| !crate::monument_icons::valid_path(path))
+        {
+            return Err("Invalid monument display preferences".into());
+        }
+        Ok(())
+    }
+
     pub fn path() -> Result<PathBuf, String> {
         let root = std::env::var_os("LOCALAPPDATA")
             .map(PathBuf::from)
@@ -199,6 +227,7 @@ impl Preferences {
         crate::installations::validate(&prefs.installations, prefs.selected_installation)?;
         prefs.generation_resources.validate()?;
         crate::monument_icons::validate(&prefs.monument_icons)?;
+        prefs.validate_monument_display()?;
         crate::topology_presets::validate(&prefs.topology_groups)?;
         Ok(prefs)
     }
@@ -206,6 +235,7 @@ impl Preferences {
         crate::installations::validate(&self.installations, self.selected_installation)?;
         self.generation_resources.validate()?;
         crate::monument_icons::validate(&self.monument_icons)?;
+        self.validate_monument_display()?;
         crate::topology_presets::validate(&self.topology_groups)?;
         if serde_json::to_vec(self).map_err(|e| e.to_string())?.len() > 65536 {
             return Err("Settings exceed 64 KiB".into());

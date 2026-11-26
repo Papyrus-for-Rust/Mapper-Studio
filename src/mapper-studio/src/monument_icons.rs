@@ -11,11 +11,7 @@ pub type Overrides = BTreeMap<String, String>;
 pub fn validate(overrides: &Overrides) -> Result<(), String> {
     if overrides.len() > 256
         || overrides.iter().any(|(path, hash)| {
-            !path.starts_with("assets/")
-                || !path.ends_with(".prefab")
-                || path.len() > 512
-                || path.split('/').any(|p| p == "..")
-                || path.chars().any(char::is_control)
+            !valid_path(path)
                 || hash.len() != 64
                 || !hash
                     .bytes()
@@ -26,6 +22,11 @@ pub fn validate(overrides: &Overrides) -> Result<(), String> {
     }
     Ok(())
 }
+pub fn valid_path(path: &str) -> bool {
+    path.starts_with("assets/") && path.ends_with(".prefab") && path.len() <= 512
+        && !path.split('/').any(|part| part == "..") && !path.chars().any(char::is_control)
+}
+
 pub fn directory(settings: &Path) -> Result<std::path::PathBuf, String> {
     Ok(settings
         .parent()

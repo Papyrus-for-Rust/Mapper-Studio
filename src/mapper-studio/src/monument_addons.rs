@@ -1,5 +1,7 @@
 //! Portable prefab attachments for generated monument roots.
-use crate::content_package::{Binding, Imported};
+use crate::{
+    content_package::{Binding, Imported},
+};
 use papyrus_terrain::{
     content::{self, Vector},
     environment::{multiply, rotate},
@@ -352,13 +354,25 @@ pub fn import(item: &Imported, name: String, anchor_index: usize) -> Result<AddO
     }
     let binding = Binding::AddOn { anchor_index };
     let local = content::compose(&item.map, binding.composition(), Vector::default(), 0.)?;
+    build_layout(
+        name, item.manifest.source_sha256.clone(), anchor_index,
+        local.anchor_id.ok_or("Stock monument anchor is missing")?, local.prefabs,
+    )
+}
+
+fn build_layout(
+    name: String,
+    source_sha256: String,
+    anchor_index: usize,
+    anchor_id: u32,
+    prefabs: Vec<content::Prefab>,
+) -> Result<AddOn, String> {
     let addon = AddOn {
         name,
-        source_sha256: item.manifest.source_sha256.clone(),
+        source_sha256,
         anchor_index,
-        anchor_id: local.anchor_id.ok_or("Stock monument anchor is missing")?,
-        children: local
-            .prefabs
+        anchor_id,
+        children: prefabs
             .into_iter()
             .map(|p| Child {
                 id: p.id,
@@ -576,10 +590,15 @@ mod tests {
         let mut source = 10_u32.to_le_bytes().to_vec();
         source.extend(0_i64.to_le_bytes());
         let mut world = vec![8, 232, 7];
+        let mut terrain = Vec::new();
+        field(&mut terrain, 10, b"terrain");
+        field(&mut terrain, 18, &[0, 0, 0, 0]);
+        field(&mut world, 18, &terrain);
         field(&mut world, 26, &prefab(11, [10., 2., 20.], 90.));
         field(&mut world, 26, &prefab(12, [10., 5., 18.], 120.));
         field(&mut source, 0, &world);
         let imported = Imported::read_bytes(&source, "Props", || false).unwrap();
+        assert_eq!(imported.map.layers[0].name, "terrain");
         let addon = import(&imported, "Props".into(), 0).unwrap();
         assert_eq!(import_for_anchor(&imported, 11).unwrap(), addon);
         assert!(import_for_anchor(&imported, 13).is_err());

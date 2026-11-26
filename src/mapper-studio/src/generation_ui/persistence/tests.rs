@@ -8,7 +8,7 @@ fn unsupported_workspace_is_rejected_before_reading_map_payloads() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("unsupported.mapper");
     let mut workspace = Workspace {
-        schema: SHARED_FONT_SCHEMA + 1,
+        schema: NAMED_RECIPES_SCHEMA + 1,
         results: Vec::new(),
         queue: Vec::new(),
         count: 1,
@@ -17,9 +17,10 @@ fn unsupported_workspace_is_rejected_before_reading_map_payloads() {
         active: None,
         fonts: Vec::new(),
         edits: Vec::new(),
+        recipes: None,
     };
     let sources = [Source::Bytes(vec![37; 2 * 1024 * 1024].into())];
-    for schema in [SHARED_FONT_SCHEMA + 1, SHARED_FONT_SCHEMA] {
+    for schema in [NAMED_RECIPES_SCHEMA + 1, NAMED_RECIPES_SCHEMA] {
         workspace.schema = schema;
         mapper_studio::project_bundle::write(
             &path, Project::default(), &workspace, &sources, || false,
@@ -30,7 +31,7 @@ fn unsupported_workspace_is_rejected_before_reading_map_payloads() {
         drop(file);
         let error = Generation::restore(&path, &egui::Context::default(), &|| false)
             .err().expect("Invalid workspace should fail");
-        assert_eq!(error, if schema > SHARED_FONT_SCHEMA {
+        assert_eq!(error, if schema > NAMED_RECIPES_SCHEMA {
             "Unsupported saved map workspace"
         } else {
             "A saved map payload failed its project checksum"
@@ -138,8 +139,10 @@ fn incomplete_maps_reopen_and_legacy_ready_errors_are_migrated() {
     let mut saved = mapper_studio::project_bundle::load(&current, || false)
         .unwrap()
         .unwrap();
-    assert_eq!(saved.manifest.workspace["schema"], 2);
+    assert_eq!(saved.manifest.workspace["schema"], NAMED_RECIPES_SCHEMA);
+    assert_eq!(saved.manifest.workspace["queue"][0]["origin"]["name"], "Recipe");
     saved.manifest.workspace["schema"] = 1.into();
+    saved.manifest.workspace["queue"][0].as_object_mut().unwrap().remove("origin");
     saved.manifest.workspace["queue"][0]["state"] = "Ready".into();
     saved.manifest.workspace["queue"][0]["detail"] = "".into();
     let sources = saved
@@ -331,6 +334,7 @@ fn owned_working_snapshot_exports_the_current_complete_world() {
             schema: 1,
             results: Vec::new(),
             edits: Vec::new(),
+            recipes: None,
             queue: Vec::new(),
             count: 4,
             randomize: [false; 7],
@@ -585,7 +589,7 @@ fn generated_maps_save_and_reopen_through_normal_project_operations_without_gene
     assert!(edit.place_template(result, &template, [10., 20.], None).unwrap());
     edit.paths.record(&result.routes, draft_path, recipe.size).unwrap();
     let failed_id = id + 1;
-    let failure = QueueItem {
+    let failure = QueueItem { origin: None,
         id: failed_id, label: "Rebuild".into(), recipe: recipe.clone(),
         state: State::Failed, detail: "Road fitting failed".into(),
     };
@@ -731,6 +735,7 @@ fn duplicate_workspace_payloads_share_assets_and_still_validate_each_render_size
         schema: 2,
         results,
         edits: Vec::new(),
+        recipes: None,
         queue: Vec::new(),
         count: 2,
         randomize: [false; 7],
@@ -1188,7 +1193,7 @@ fn edits_during_open_require_a_decision_and_save_before_switching() {
 }
 fn project_with_running_map(ctx: &egui::Context) -> Studio {
     let mut app = crate::tests::fixture(ctx);
-    app.generation.queue.push(QueueItem {
+    app.generation.queue.push(QueueItem { origin: None,
         id: 1,
         label: "Running map".into(),
         recipe: app.project.clone(),
@@ -1541,7 +1546,7 @@ fn owned_world_bytes_palette_and_shared_font_survive_project_reopening() {
             background: Color32::from_rgb(24, 66, 95),
             palette: Some(palette.clone()),
         });
-        app.generation.queue.push(QueueItem {
+        app.generation.queue.push(QueueItem { origin: None,
             id,
             label: format!("Retained world {id}"),
             recipe: recipe.clone(),

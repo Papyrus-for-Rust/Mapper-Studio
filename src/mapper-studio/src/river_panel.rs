@@ -22,19 +22,24 @@ impl Drop for Task {
 }
 #[derive(Default)]
 pub(super) struct Panel {
-    prepared: Option<(PathBuf, Installation, Recipe)>,
+    prepared: Option<Arc<(PathBuf, Installation, Recipe)>>,
     task: Option<Task>,
     attempted: Option<(Installation, Recipe)>,
     message: String,
 }
 impl Panel {
     pub(super) fn ready_for_import(&self, project: &Project, root: Option<&std::path::Path>) -> Option<Recipe> {
-        let (path, source, recipe) = self.prepared.as_ref()?;
+        let (path, source, recipe) = self.prepared.as_deref()?;
         (Some(path.as_path()) == root && project.installation.as_ref() == Some(source))
             .then(|| recipe.clone())
     }
     pub fn accept_prepared(&mut self, root: PathBuf, source: Installation, recipe: Option<Recipe>) {
-        self.prepared = recipe.map(|recipe| (root, source, recipe));
+        self.prepared = recipe.map(|recipe| Arc::new((root, source, recipe)));
+    }
+    pub(super) fn share_prepared_from(&mut self, other: &Self) {
+        if let Some(prepared) = &other.prepared {
+            self.prepared = Some(prepared.clone());
+        }
     }
     pub fn busy(&self) -> bool {
         self.task.is_some()
@@ -54,7 +59,7 @@ impl Panel {
         Ok(())
     }
     pub fn tick(&mut self, project: &mut Project, root: Option<PathBuf>, ctx: &egui::Context) {
-        if let Some((prepared_root, prepared_source, prepared)) = &self.prepared
+        if let Some((prepared_root, prepared_source, prepared)) = self.prepared.as_deref()
             && root.as_ref() == Some(prepared_root)
             && project.installation.as_ref() == Some(prepared_source)
             && let Some(recipe) = &mut project.rivers
@@ -139,7 +144,7 @@ impl Panel {
         let ctx = ctx.clone();
         let prepared = self
             .prepared
-            .as_ref()
+            .as_deref()
             .filter(|(path, installation, prepared)| {
                 path == &root
                     && installation == &source
@@ -185,6 +190,15 @@ impl Panel {
         );
         if let Some(enabled) = changed {
             if !enabled {self.task=None;project.rivers=None;}
+            else if let Some(recipe) = self.ready_for_import(project, root.as_deref()) {
+                project.rivers = Some(recipe);
+                if project.composition_engine.is_some()
+                    && !papyrus_terrain::monument_composition::water_aware(project.composition_engine.as_deref())
+                {
+                    project.composition_engine = Some(papyrus_terrain::monument_composition::WATER_VERSION.into());
+                }
+                self.message.clear();
+            }
             else if let (Some(root),Some(source))=(root,project.installation.clone()) {
                 self.start(root,source,None,&ctx);
             }

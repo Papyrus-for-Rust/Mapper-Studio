@@ -13,6 +13,7 @@ struct Drag {
 #[derive(Clone, Copy)]
 struct Columns {
     seed: f32,
+    recipe: f32,
     status: f32,
     stage: f32,
     elapsed: f32,
@@ -20,15 +21,17 @@ struct Columns {
 }
 
 impl Columns {
-    fn new(width: f32) -> Self {
+    fn new(width: f32, has_recipes: bool) -> Self {
         let elapsed = if width >= 500. { 58. } else { 0. };
         let actions = if width >= 400. { 119. } else { 78. };
         let status = if width >= 310. { 86. } else { 63. };
         let seed = if width >= 400. { 111. } else { 80. };
+        let recipe = if has_recipes && width >= 495. { (width * 0.15).clamp(75., 140.) } else { 0. };
         Self {
             seed,
+            recipe,
             status,
-            stage: (width - GRIP - seed - status - elapsed - actions).max(0.),
+            stage: (width - GRIP - seed - recipe - status - elapsed - actions).max(0.),
             elapsed,
             actions,
         }
@@ -162,6 +165,69 @@ fn cell(
 
 fn label(ui: &mut egui::Ui, width: f32, text: impl Into<egui::WidgetText>) -> egui::Response {
     cell(ui, width, ROW, text)
+}
+
+fn seed_button(
+    ui: &mut egui::Ui,
+    item: &QueueItem,
+    width: f32,
+    can_use_seed: bool,
+    active_recipe_name: &str,
+) -> Option<QueueAction> {
+    let mut seed = item.recipe.master_seed;
+    if item.origin.is_none() {
+        seed = item.label.strip_prefix("Seed ")
+            .and_then(|label| label.split_whitespace().next()?.parse().ok())
+            .unwrap_or(seed);
+    }
+    if seed == 0 {
+        seed = item.recipe.seeds[0].value;
+    }
+    let recipe_name = item.origin.as_ref().map(|origin| origin.name.as_str());
+    let label = seed.to_string();
+    let display = match item.label.split_once(" · ") {
+        Some((_, id)) if id.parse::<u64>() == Ok(item.id) => format!("{label} · {id}"),
+        _ => label.clone(),
+    };
+    let response = ui.add_sized(
+        [width - 2., 22.],
+        egui::Button::new(egui::Atoms::new((
+            egui::RichText::new(&display).monospace().atom_shrink(true),
+            egui::Atom::grow(),
+        )))
+        .frame(false)
+        .truncate(),
+    ).on_hover_cursor(egui::CursorIcon::PointingHand);
+    ui.add_space(2.);
+    let mut action = None;
+    let copied_id = response.id.with("seed-feedback");
+    let now = ui.input(|input| input.time);
+    if response.clicked() {
+        let control = ui.input(|input| input.modifiers.ctrl);
+        if control && can_use_seed && (1..=mapper_studio::MAX_SEED).contains(&seed) {
+            action = Some(QueueAction::UseSeed(seed));
+            ui.data_mut(|data| data.insert_temp(copied_id, (now + 1.3, format!("Seed set in {active_recipe_name}"))));
+        } else if !control {
+            ui.ctx().copy_text(label);
+            ui.data_mut(|data| data.insert_temp(copied_id, (now + 1.3, String::from("Seed copied"))));
+        }
+    }
+    response.context_menu(|ui| {
+        if ui.button("Open map").clicked() {
+            action = Some(QueueAction::OpenMap(item.id));
+            ui.close();
+        }
+    });
+    if let Some((until, hint)) = ui.data(|data| data.get_temp::<(f64, String)>(copied_id))
+        && until > now
+    {
+        egui::Tooltip::for_widget(&response).show(|ui| ui.label(hint));
+        ui.ctx().request_repaint_after(Duration::from_secs_f64(until - now));
+    } else {
+        let hint = format!("Click to copy seed. Ctrl-click sets the master seed in {active_recipe_name}.");
+        response.on_hover_text(recipe_name.map_or_else(|| hint.clone(), |name| format!("{name}\n{hint}")));
+    }
+    action
 }
 
 fn grip(ui: &mut egui::Ui, id: u64, y: f32) -> Option<QueueAction> {
@@ -352,7 +418,7 @@ impl Studio {
             return;
         }
         let width = ui.available_width() - ui.spacing().scroll.allocated_width();
-        let columns = Columns::new(width);
+        let columns = Columns::new(width, ordered.iter().any(|item| item.origin.is_some()));
         let (seam, _) = ui.allocate_exact_size(Vec2::new(width, 1.), Sense::hover());
         ui.painter().hline(
             seam.x_range(),
@@ -372,6 +438,9 @@ impl Studio {
                         COLUMN_HEADER,
                         egui::RichText::new("Map seed").weak(),
                     );
+                    if columns.recipe > 0. {
+                        cell(ui, columns.recipe, COLUMN_HEADER, egui::RichText::new("Recipe").weak());
+                    }
                     cell(
                         ui,
                         columns.status,
@@ -406,6 +475,8 @@ impl Studio {
             .find(|item| item.state == State::Waiting)
             .map(|item| item.id);
         let can_requeue = self.can_requeue();
+        let can_use_seed = self.drag_before.is_none();
+        let active_recipe_name = self.recipe_tabs.name(self.recipe_tabs.active()).to_owned();
         let can_load = self.can_load_queue_recipe();
         let reveal = self
             .generation
@@ -528,6 +599,10 @@ impl Studio {
                     } else if dragged || child.rect_contains_pointer(rect) {
                         child.painter().rect_filled(rect.shrink(0.5), 5., bg);
                     } else {
+                        if projected % 2 == 1 {
+                            let stripe = child.visuals().panel_fill.lerp_to_gamma(bg, 0.60);
+                            child.painter().rect_filled(rect, 0., stripe);
+                        }
                         child.painter().hline(
                             rect.x_range(),
                             rect.bottom(),
@@ -541,23 +616,13 @@ impl Studio {
                     } else {
                         child.add_space(GRIP);
                     }
-                    let seed = item.label.strip_prefix("Seed ").unwrap_or(&item.label);
-                    if child
-                        .add_sized(
-                            [columns.seed - 2., 22.],
-                            egui::Button::new(egui::Atoms::new((
-                                egui::RichText::new(seed).monospace().atom_shrink(true),
-                                egui::Atom::grow(),
-                            )))
-                            .frame(false)
-                            .truncate(),
-                        )
-                        .on_hover_text(&item.label)
-                        .clicked()
-                    {
-                        action = Some(QueueAction::OpenMap(item.id));
+                    if let Some(seed) = seed_button(&mut child, item, columns.seed, can_use_seed, &active_recipe_name) {
+                        action = Some(seed);
                     }
-                    child.add_space(2.);
+                    if columns.recipe > 0. {
+                        let name = item.origin.as_ref().map_or("", |origin| origin.name.as_str());
+                        label(&mut child, columns.recipe, egui::RichText::new(name).weak()).on_hover_text(name);
+                    }
                     let caption = match item.state {
                         State::Running if paused => self.queue_pause_caption(item.id),
                         State::Running => "Running",
@@ -795,6 +860,70 @@ pub(super) fn queue_table_actions(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn named_recipe_queue_seed_click_copies_and_ctrl_click_targets_the_recipe() {
+        use super::*;
+        let ctx = egui::Context::default();
+        let mut recipe = Project::default();
+        recipe.master_seed = 42781;
+        recipe.refresh_inherited_seeds();
+        let item = QueueItem {
+            id: 17,
+            label: "Seed 2617 · 17".into(),
+            recipe,
+            state: State::Ready,
+            detail: String::new(),
+            origin: Some(recipe_tabs::RecipeOrigin { id: 2, name: "Island Test".into() }),
+        };
+        let render = |events| {
+            let mut action = None;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(450., 120.))),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    action = seed_button(ui, &item, 120., true, "Vanilla 4K");
+                },
+            );
+            output.textures_delta.clear();
+            (action, output)
+        };
+        render(vec![]);
+        let (_, initial) = render(vec![]);
+        let seed_pos = initial.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.job.text == "42781 · 17" => {
+                Some(text.pos + text.galley.rect.center().to_vec2())
+            }
+            _ => None,
+        }).expect("The queue displays the master seed");
+        let click = |modifiers| {
+            let mut result = None;
+            for pressed in [true, false] {
+                result = Some(render(vec![
+                    egui::Event::ModifiersChanged(modifiers),
+                    egui::Event::PointerMoved(seed_pos),
+                    egui::Event::PointerButton {
+                        pos: seed_pos, button: egui::PointerButton::Primary, pressed, modifiers,
+                    },
+                ]));
+            }
+            result.unwrap()
+        };
+        let (action, copied) = click(egui::Modifiers::NONE);
+        assert_eq!(action, None);
+        assert!(copied.platform_output.commands.iter().any(|command| matches!(
+            command, egui::OutputCommand::CopyText(text) if text == "42781"
+        )));
+        let control = egui::Modifiers { ctrl: true, command: true, ..egui::Modifiers::NONE };
+        let (action, assignment) = click(control);
+        assert_eq!(action, Some(QueueAction::UseSeed(42781)));
+        assert!(!assignment.platform_output.commands.iter().any(|command| matches!(
+            command, egui::OutputCommand::CopyText(_)
+        )));
+    }
+
     use super::*;
 
     #[test]
@@ -804,7 +933,7 @@ mod tests {
         workbench_style::set_reduced_motion(&ctx, true);
         let mut app = crate::tests::fixture(&ctx);
         app.generation.queue = (1..=4)
-            .map(|id| QueueItem {
+            .map(|id| QueueItem { origin: None,
                 id,
                 label: format!("Seed {id}"),
                 recipe: app.project.clone(),

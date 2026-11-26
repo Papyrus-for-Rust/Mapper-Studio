@@ -32,6 +32,19 @@ fn same_catalogue(previous: &Option<Weak<Catalog>>, current: Option<&Arc<Catalog
 }
 
 impl TemplatePicker {
+    pub(super) fn dialog_entries(&self) -> impl Iterator<Item = (&str, &str, bool)> {
+        self.entries.iter().map(|entry| (entry.path.as_str(), entry.label.as_str(), entry.placeable))
+    }
+
+    pub(super) fn prepare_dialog(
+        &mut self,
+        project: &Project,
+        catalog: Option<&Arc<Catalog>>,
+        icons: &monument_icon_panel::Panel,
+    ) {
+        self.refresh(project, catalog, icons);
+    }
+
     fn refresh(
         &mut self,
         project: &Project,
@@ -98,7 +111,7 @@ struct Row {
     prefab_path: Option<String>,
 }
 
-fn presence_buttons(ui: &mut egui::Ui, presence: Presence, blocker: Option<&str>) -> Option<Presence> {
+pub(super) fn presence_buttons(ui: &mut egui::Ui, presence: Presence, blocker: Option<&str>) -> Option<Presence> {
     let mut changed = None;
     for (choice, help) in [
         (Presence::Required, "Require this monument"),
@@ -219,7 +232,7 @@ impl Studio {
                     .desired_width(search_width),
             );
             if ui.button("Import…").on_hover_text("Import a standalone custom monument").clicked() {
-                self.custom_monuments.open(ui.ctx());
+                self.open_custom_monument_dialog(ui.ctx(), self.recipe_tabs.editor());
             }
             if generated_id.is_none()
                 && ui.add_enabled_ui(selected_template.is_some(), |ui| {
@@ -473,7 +486,7 @@ impl Studio {
             return;
         }
         if let Some((path, name)) = settings_request {
-            self.content.open_monument_settings(&self.project, path, name);
+            self.open_stock_monument_dialog(self.recipe_tabs.editor(), path, name);
         }
     }
 

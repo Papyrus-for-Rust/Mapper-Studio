@@ -2,6 +2,8 @@
 #[path = "../examples/support/prepared_assets.rs"]
 mod prepared_assets;
 mod generation_ui;
+mod recipe_tabs;
+use recipe_tabs::FIRST_RECIPE;
 mod tool_icons;
 mod path_editor;
 mod map_label_panel;
@@ -14,6 +16,7 @@ mod composition_panel;
 mod color_panel;
 mod content_panel;
 mod custom_monument_panel;
+mod monument_dialog;
 mod update_panel;
 mod decor_model_panel;
 mod decor_panel;
@@ -65,7 +68,7 @@ fn ocean_background(palette:Option<&mapper_studio::terrain_palette::Palette>,col
 enum Tab {
     Map,
     Generated(u64),
-    Recipe,
+    Recipe(u64),
     Outliner,
     Inspector,
     Queue,
@@ -78,7 +81,7 @@ fn layout() -> DockState<Tab> {
     let [workspace, _recipe] = dock.main_surface_mut().split_left(
         NodeIndex::root(),
         0.22,
-        vec![Tab::Recipe],
+        vec![Tab::Recipe(FIRST_RECIPE)],
     );
     let [center, outliner] = dock.main_surface_mut().split_right(
         workspace,
@@ -129,6 +132,7 @@ struct Studio {
     map_archive: map_archive::Panel,
     project: Project,
     saved: Project,
+    recipe_tabs: recipe_tabs::RecipeTabs,
     path: Option<PathBuf>,
     history: History,
     dock: DockState<Tab>,
@@ -152,6 +156,7 @@ struct Studio {
     template_picker: outliner::TemplatePicker,
     content: content_panel::ContentPanel,
     custom_monuments: custom_monument_panel::Panel,
+    monument_dialog: monument_dialog::State,
     updates: update_panel::Panel,
     preparation: preparation_panel::PreparationPanel,
     prefabs: prefab_panel::PrefabPanel,
@@ -231,6 +236,7 @@ impl Studio {
         let mut app = Self {
             project_io:Default::default(),
             saved: p.clone(),
+            recipe_tabs: Default::default(),
             project: p,
             path: None,
             history: History::default(),
@@ -256,6 +262,7 @@ impl Studio {
             template_picker: Default::default(),
             content: content_panel::ContentPanel::default(),
             custom_monuments: Default::default(),
+            monument_dialog: Default::default(),
             updates: update_panel::Panel::new(),
             preparation: preparation_panel::PreparationPanel::default(),
             prefabs: prefab_panel::PrefabPanel::default(),
@@ -427,7 +434,9 @@ impl Studio {
         }
     }
     fn dirty(&self) -> bool {
-        self.document_recipe() != &self.saved || self.generation.revision!=self.project_io.saved_generation
+        self.document_recipe() != &self.saved
+            || self.generation.revision != self.project_io.saved_generation
+            || self.recipe_tabs.revision != self.project_io.saved_recipes
     }
     fn pristine_new_project(&self) -> bool {
         self.path.is_none() && !self.history.can_undo() && !self.history.can_redo() && !self.dirty()
@@ -1062,6 +1071,9 @@ impl Studio {
         self.cancel_generation();
         self.generation = Default::default();
         self.project_io.saved_generation = 0;
+        self.project_io.saved_recipes = 0;
+        self.recipe_tabs = Default::default();
+        self.recipe_settings_open = false;
         self.dock = layout();
         self.requested_tab = None;
         if let Some(task) = &self.task {
@@ -1762,13 +1774,14 @@ impl Studio {
             // Accepted center handles are drawn only for a current layout.
             // Retained, visible paint remains pickable independently of handles.
             let accepted_markers_visible=self.current_layout().is_some();
-            let hidden_map_text = |path| self.preferences.monument_markers == mapper_studio::map_labels::Mode::Text
+            let hidden_map_text = |path| self.preferences.monument_marker_hidden(path)
+                || self.preferences.monument_markers == mapper_studio::map_labels::Mode::Text
                 && !self.restrictions.shows_map_text(path);
             // A first click must use the same artwork/fallback as this frame's
             // paint, even if the icon has not been drawn previously.
             for t in &self.project.targets {
                 if t.presence!=Presence::Excluded && !hidden_map_text(t.prefab_path.as_deref()) {
-                    self.monument_icons.prepare_hit(ui.ctx(),t.prefab_path.as_deref(),&self.preferences,self.settings_path.as_deref(),map_label_panel::Text{name:&self.monument_icons.name(t.prefab_path.as_deref(),&t.name),source:map_font.as_ref()});
+                    self.monument_icons.prepare_hit(ui.ctx(),t.prefab_path.as_deref(),&self.preferences,self.settings_path.as_deref(),map_label_panel::Text{name:self.preferences.monument_label(t.prefab_path.as_deref(), &self.monument_icons.name(t.prefab_path.as_deref(), &t.name)),source:map_font.as_ref()});
                 }
             }
             // A retained complete world also contains baked paint. Its picker
@@ -1790,7 +1803,7 @@ impl Studio {
                     let marker_hit=|center: Pos2,requested| if hidden_map_text(t.prefab_path.as_deref()) {
                         requested && pos.distance(center) <= monument_icon_panel::REQUEST_RADIUS + 2.
                     } else {
-                        self.monument_icons.marker_hit(pos,center,t.prefab_path.as_deref(),&self.preferences,requested,map_label_panel::Text{name:&self.monument_icons.name(t.prefab_path.as_deref(),&t.name),source:map_font.as_ref()})
+                        self.monument_icons.marker_hit(pos,center,t.prefab_path.as_deref(),&self.preferences,requested,map_label_panel::Text{name:self.preferences.monument_label(t.prefab_path.as_deref(), &self.monument_icons.name(t.prefab_path.as_deref(), &t.name)),source:map_font.as_ref()})
                     };
                     let desired=if requested_marker_visible && marker_hit(screen(t.x,t.z),true) {screen(t.x,t.z).distance(pos)}else{f32::INFINITY};
                     let generated = accepted.filter(|p|accepted_markers_visible && marker_hit(screen(p.x,p.z),false)).map_or(f32::INFINITY, |p| screen(p.x,p.z).distance(pos));
@@ -2124,10 +2137,11 @@ impl Studio {
                 }
                 let target=self.project.targets.iter().find(|t|t.instance_id==*id);
                 let path=target.and_then(|t|t.prefab_path.as_deref());
-                if self.preferences.monument_markers == mapper_studio::map_labels::Mode::Text
+                if self.preferences.monument_marker_hidden(path)
+                    || self.preferences.monument_markers == mapper_studio::map_labels::Mode::Text
                     && !self.restrictions.shows_map_text(path) { continue; }
                 let name=self.monument_icons.name(path,target.map_or("",|t|t.name.as_str()));
-                if !self.monument_icons.paint(&painter,p,path,&self.preferences,self.settings_path.as_deref(),map_label_panel::Text{name:&name,source:map_font.as_ref()}) {
+                if !self.monument_icons.paint(&painter,p,path,&self.preferences,self.settings_path.as_deref(),map_label_panel::Text{name:self.preferences.monument_label(path, &name),source:map_font.as_ref()}) {
                     painter.circle_filled(p, monument_icon_panel::PLACED_RADIUS, color);
                 }
             }
@@ -2137,16 +2151,17 @@ impl Studio {
             for monument in roadside.iter() {
                 let point=screen(monument.position[0],monument.position[2]);
                 if !outer.expand(monument_icon_panel::ICON_SIDE).contains(point) {continue;}
-                if self.preferences.monument_markers == mapper_studio::map_labels::Mode::Text
+                if self.preferences.monument_marker_hidden(monument.prefab.as_deref())
+                    || self.preferences.monument_markers == mapper_studio::map_labels::Mode::Text
                     && !self.restrictions.shows_map_text(monument.prefab.as_deref()) {continue;}
-                if !self.monument_icons.paint(&painter,point,monument.prefab.as_deref(),&self.preferences,self.settings_path.as_deref(),map_label_panel::Text{name:&self.monument_icons.name(monument.prefab.as_deref(),&monument.name),source:map_font.as_ref()}) {
+                if !self.monument_icons.paint(&painter,point,monument.prefab.as_deref(),&self.preferences,self.settings_path.as_deref(),map_label_panel::Text{name:self.preferences.monument_label(monument.prefab.as_deref(), &self.monument_icons.name(monument.prefab.as_deref(), &monument.name)),source:map_font.as_ref()}) {
                     painter.circle_filled(point, monument_icon_panel::PLACED_RADIUS, Color32::from_rgb(118,207,245));
                 }
             }
             if let Some(pointer)=response.hover_pos().filter(|_|self.preferences.monument_markers==mapper_studio::map_labels::Mode::Icons)
-                && let Some(monument)=roadside.iter().filter(|m|screen(m.position[0],m.position[2]).distance(pointer)<=18.)
+                && let Some(monument)=roadside.iter().filter(|m|!self.preferences.monument_marker_hidden(m.prefab.as_deref()) && screen(m.position[0],m.position[2]).distance(pointer)<=18.)
                     .min_by(|a,b|screen(a.position[0],a.position[2]).distance(pointer).total_cmp(&screen(b.position[0],b.position[2]).distance(pointer))) {
-                marker_label(&painter,outer,screen(monument.position[0],monument.position[2]),&self.monument_icons.name(monument.prefab.as_deref(),&monument.name));
+                marker_label(&painter,outer,screen(monument.position[0],monument.position[2]),self.preferences.monument_label(monument.prefab.as_deref(), &self.monument_icons.name(monument.prefab.as_deref(), &monument.name)));
             }
         }
         for (i, t) in self.project.targets.iter().enumerate() {
@@ -2171,9 +2186,9 @@ impl Studio {
                 );
             }
             painter.circle_filled(p, monument_icon_panel::REQUEST_RADIUS, color);
-            if self.show_preferences && (self.preferences.monument_markers != mapper_studio::map_labels::Mode::Text
+            if self.show_preferences && !self.preferences.monument_marker_hidden(t.prefab_path.as_deref()) && (self.preferences.monument_markers != mapper_studio::map_labels::Mode::Text
                 || self.restrictions.shows_map_text(t.prefab_path.as_deref())) {
-                self.monument_icons.paint(&painter,p,t.prefab_path.as_deref(),&self.preferences,self.settings_path.as_deref(),map_label_panel::Text{name:&self.monument_icons.name(t.prefab_path.as_deref(),&t.name),source:map_font.as_ref()});
+                self.monument_icons.paint(&painter,p,t.prefab_path.as_deref(),&self.preferences,self.settings_path.as_deref(),map_label_panel::Text{name:self.preferences.monument_label(t.prefab_path.as_deref(), &self.monument_icons.name(t.prefab_path.as_deref(), &t.name)),source:map_font.as_ref()});
             }
         }
         if let Some(pointer) = response.hover_pos().filter(|_|self.preferences.monument_markers==mapper_studio::map_labels::Mode::Icons) {
@@ -2182,11 +2197,12 @@ impl Studio {
                 .filter(|_| self.current_layout().is_some())
                 .filter_map(|(id, p)| {
                     let t = self.project.targets.iter().find(|t| t.instance_id == *id)?;
+                    if self.preferences.monument_marker_hidden(t.prefab_path.as_deref()) { return None; }
                     let center = screen(p.x, p.z);
                     Some((
                         pointer.distance(center),
                         center,
-                        format!("{} · placed", self.monument_icons.name(t.prefab_path.as_deref(),&t.name)),
+                        format!("{} · placed", self.preferences.monument_label(t.prefab_path.as_deref(), &self.monument_icons.name(t.prefab_path.as_deref(), &t.name))),
                     ))
                 });
             let requested = self
@@ -2203,7 +2219,7 @@ impl Studio {
                     (
                         pointer.distance(center),
                         center,
-                        format!("{} · requested", self.monument_icons.name(t.prefab_path.as_deref(),&t.name)),
+                        format!("{} · requested", self.preferences.monument_label(t.prefab_path.as_deref(), &self.monument_icons.name(t.prefab_path.as_deref(), &t.name))),
                     )
                 });
             if let Some((distance, center, label)) =
@@ -2236,6 +2252,9 @@ impl<'a> Tabs<'a> {
     }
 
     fn finish(mut self, dock: &mut DockState<Tab>) {
+        if let Some((anchor, duplicate)) = self.studio.recipe_tabs.pending_new.take() {
+            self.studio.add_recipe_tab(anchor, duplicate, dock);
+        }
         for tab in self.closing {
             let Some(path) = dock.find_tab(&tab) else { continue; };
             if self.map_count > 1 {
@@ -2254,16 +2273,37 @@ impl TabViewer for Tabs<'_> {
     }
     fn on_tab_button(&mut self, tab: &mut Tab, response: &egui::Response) {
         workbench_style::finish_dock_title(response);
+        if let Tab::Recipe(id) = *tab {
+            if response.clicked() || response.double_clicked() {
+                self.studio.activate_recipe(id);
+            }
+            if response.double_clicked() {
+                self.studio.recipe_tabs.begin_rename(id);
+            }
+            let hint = if self.studio.recipe_tabs.active() == id && self.studio.recipe_tabs.multiple() {
+                "Active recipe for the Generate menu and Ctrl-clicked seeds. Double-click to rename."
+            } else {
+                "Click to activate. Double-click to rename."
+            };
+            response.clone().on_hover_text(hint);
+        }
         if let Some((_, leaf)) = self.active_tabs.iter().find(|(active, _)| active == tab) {
             workbench_style::join_dock_tab(response, *leaf);
         }
     }
     fn title(&mut self, t: &mut Tab) -> egui::WidgetText {
         if let Tab::Generated(id) = *t { return self.studio.generated_title(id).into(); }
+        if let Tab::Recipe(id) = *t {
+            let mut title = egui::RichText::new(self.studio.recipe_tabs.name(id)).size(16.).strong();
+            if self.studio.recipe_tabs.multiple() && id == self.studio.recipe_tabs.active() {
+                title = title.underline();
+            }
+            return title.into();
+        }
         let title = match t {
             Tab::Map => "Recipe preview",
             Tab::Generated(_) => unreachable!(),
-            Tab::Recipe => "Recipe",
+            Tab::Recipe(_) => unreachable!(),
             Tab::Outliner => "Monuments",
             Tab::Inspector => "Selection",
             Tab::Queue => "Queue",
@@ -2271,12 +2311,22 @@ impl TabViewer for Tabs<'_> {
             Tab::Plugins => "Plugins",
             Tab::Nodes => "Nodes",
         };
-        if *t == Tab::Recipe {
-            egui::RichText::new(title).size(16.).strong().into()
-        } else if matches!(t, Tab::Outliner | Tab::Map) {
+        if matches!(t, Tab::Outliner | Tab::Map) {
             egui::RichText::new(title).strong().into()
         } else {
             title.into()
+        }
+    }
+    fn context_menu(&mut self, ui: &mut egui::Ui, tab: &mut Tab, _: egui_dock::NodePath) {
+        if let Tab::Recipe(id) = *tab {
+            if ui.button("Rename…").clicked() {
+                self.studio.recipe_tabs.begin_rename(id);
+                ui.close();
+            }
+            if ui.add_enabled(self.studio.recipe_tabs.can_add(), egui::Button::new("Duplicate")).clicked() {
+                self.studio.recipe_tabs.pending_new = Some((id, true));
+                ui.close();
+            }
         }
     }
     fn ui(&mut self, ui: &mut egui::Ui, t: &mut Tab) {
@@ -2284,9 +2334,10 @@ impl TabViewer for Tabs<'_> {
         match t {
             Tab::Map => self.studio.map(ui),
             Tab::Generated(id) => self.studio.generated_map(ui, *id),
-            Tab::Recipe => {
-                self.studio.recipe_generate(ui);
-                self.studio.recipe(ui);
+            Tab::Recipe(id) => {
+                self.studio.recipe_generate_for(ui, *id);
+                let ctx = ui.ctx().clone();
+                self.studio.with_recipe_editor(*id, &ctx, |studio| studio.recipe_controls(ui));
             }
             Tab::Outliner => {
                 if let Some(id) = self.active_map { self.studio.outliner(ui, Some(id)); }
@@ -2319,7 +2370,7 @@ impl TabViewer for Tabs<'_> {
         matches!(tab, Tab::Generated(_) | Tab::Nodes) || (*tab == Tab::Map && self.map_count > 1)
     }
     fn scroll_bars(&self, tab: &Tab) -> [bool; 2] {
-        [!matches!(tab, Tab::Nodes | Tab::Recipe | Tab::Queue); 2]
+        [!matches!(tab, Tab::Nodes | Tab::Recipe(_) | Tab::Queue); 2]
     }
     fn on_close(&mut self, tab: &mut Tab) -> OnCloseResponse {
         if *tab == Tab::Nodes {
@@ -2466,7 +2517,7 @@ impl eframe::App for Studio {
         self.apply_prepared_recipe_defaults();
         self.rails.tick(&self.project,self.source.bound_root(&self.project).map(|p|p.to_owned()),self.prefabs.catalog(&self.project),self.prefabs.bindings(&self.project),&ctx);
         self.decoration_panel.tick(
-            &self.project,
+            self.generation.draft().unwrap_or(&self.project),
             self.source.bound_root(&self.project).map(|p| p.to_owned()),
             self.prefabs.catalog(&self.project),
             self.prefabs.bindings(&self.project),
@@ -2569,13 +2620,6 @@ impl eframe::App for Studio {
         let selected_before_dock = self.selected;
         let snapshot = self.visible_generated_tab();
         let mut dock = std::mem::replace(&mut self.dock, DockState::new(vec![]));
-        if self.content.monument_settings_open() {
-            self.with_recipe_draft(|studio| {
-                let identities = studio.source.bound_root_ref(&studio.project)
-                    .and_then(|root| studio.prefabs.prepared_identities(&studio.project, root));
-                studio.content.show_monument_settings(&ctx, &mut studio.project, identities);
-            });
-        }
         egui::CentralPanel::default().frame(workbench_style::dock_frame(ui)).show(ui, |ui| {
             let mut tabs = Tabs::new(self, snapshot, &dock);
             DockArea::new(&mut dock).style(workbench_style::dock(ui))
@@ -2583,19 +2627,14 @@ impl eframe::App for Studio {
                 .show_inside(ui, &mut tabs);
             tabs.finish(&mut dock);
         });
-        if self.custom_monuments.is_open() {
-            self.with_recipe_draft(|studio| {
-                let editable = (studio.generation.busy()
-                    || (studio.task.is_none() && studio.placement_task.is_none()))
-                    && studio.drag_before.is_none();
-                studio.custom_monuments.show(&ctx, &mut studio.project, editable);
-            });
-        }
+        self.show_monument_dialog(&ctx);
         self.terrain_projection.end_frame(&ctx);
         self.camera.end_frame(&ctx);
         self.dock = if self.reset_layout {
             self.reset_layout = false;
-            layout()
+            let mut layout = layout();
+            self.recipe_tabs.rebuild_tabs(&mut layout);
+            layout
         } else {
             dock
         };
@@ -2608,6 +2647,7 @@ impl eframe::App for Studio {
         self.generation.finish_preview_frame(&self.dock);
         self.installation_setup_window(&ctx);
         self.recipe_settings_window(&ctx);
+        self.recipe_tabs.rename_window(&ctx);
         self.settings_window(&ctx);
         self.support_snapshot_window(&ctx);
         let can_restart = self.updates.awaiting_restart() && !self.dirty() && !self.generation_in_progress()
@@ -2754,6 +2794,7 @@ mod tests {
             project_io:Default::default(),
             map_archive: Default::default(),
             saved: project.clone(),
+            recipe_tabs: Default::default(),
             preview: Some(Preview {
                 ordered_terrain: false,
                 raw_source: None,
@@ -2792,6 +2833,7 @@ mod tests {
             template_picker: Default::default(),
             content: content_panel::ContentPanel::default(),
             custom_monuments: Default::default(),
+            monument_dialog: Default::default(),
             updates: Default::default(),
             preparation: preparation_panel::PreparationPanel::default(),
             prefabs: prefab_panel::PrefabPanel::default(),

@@ -303,11 +303,20 @@ struct QueueItem {
     recipe: Project,
     state: State,
     detail: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    origin: Option<recipe_tabs::RecipeOrigin>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Submission {
+    Queue,
+    Run,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum QueueAction {
     OpenMap(u64),
+    UseSeed(u32),
     LoadRecipe(u64),
     SaveRecipe(u64),
     CancelMap(u64),
@@ -358,6 +367,7 @@ pub(super) struct Generation {
     overview:Option<persistence::OverviewTask>,
     overview_ready: Option<(persistence::OverviewKey, std::sync::Arc<tempfile::TempPath>)>,
     validated_recipe: Option<(Project, Result<(), GenerationBlocker>)>,
+    other_validated_recipes: HashMap<u64, (Project, Result<(), GenerationBlocker>)>,
     count: usize,
     randomize: [bool; 7],
     run: Option<Run>,
@@ -402,7 +412,7 @@ impl GenerationBlocker {
             Self::MatchingInstallation => "Choose the matching Rust installation in Settings",
             Self::AssetsUnavailable => "Installation assets unavailable",
             Self::QueueFull => "The generation queue is full. Wait for a map to finish or remove one in Queue.",
-            Self::CheckingOverlays => "Checking custom monument content…",
+            Self::CheckingOverlays => "Checking monument layouts…",
             Self::Overlay { message, .. }
             | Self::UnsupportedNativeProfile(message)
             | Self::Other(message) => message,
@@ -422,6 +432,7 @@ impl Default for Generation {
             revision:0,overview:None,overview_ready:None,
             recipe_recovery: None,
             validated_recipe: None,
+            other_validated_recipes: HashMap::new(),
             count: 4,
             randomize: [false; 7],
             run: None,
@@ -449,6 +460,10 @@ impl Default for Generation {
     }
 }
 impl Generation {
+    pub(super) fn draft(&self) -> Option<&Project> {
+        self.run.as_ref().and_then(|run| run.template.as_ref())
+    }
+
     pub(super) fn active_edit_road_layout(&self) -> Option<Arc<mapper_studio::source_road_planning::AcceptedRoadLayout>> {
         let active = self.run.as_ref()?.active_id;
         let (&original, _) = self.edits.iter().find(|(_, edit)| edit.job == Some(active))?;
@@ -669,6 +684,10 @@ impl Generation {
         self.queue.iter().filter(|item| item.state == State::Waiting).count()
     }
     fn retire_waiting_map(&mut self, id: u64) {
+        self.execution.requested_parallel.remove(&id);
+        if self.execution.next_primary == Some(id) {
+            self.execution.next_primary = None;
+        }
         if self.queue_focus == Some(id) {
             self.queue_focus = None;
         }
@@ -1057,13 +1076,13 @@ impl Studio {
                 "Wait for installation road data to finish preparing".into(),
             ));
         }
-        self.water.readiness(recipe)?;
         Ok(())
     }
 
     fn generation_preflight(&self, recipe: &Project, working_recipe: bool) -> Result<(), String> {
         if working_recipe {
             self.decoration_panel.readiness()?;
+            self.water.readiness(recipe)?;
         }
         Self::validate_generation_recipe(recipe).map_err(|issue| issue.message().to_owned())?;
         self.generation_source_readiness(recipe, true)
@@ -1071,7 +1090,11 @@ impl Studio {
     }
 
     pub(super) fn generation_readiness(&mut self) -> Result<(), GenerationBlocker> {
-        if self.document_recipe().master_seed == 0 {
+        self.generation_readiness_for(self.recipe_tabs.active())
+    }
+
+    fn generation_readiness_for(&mut self, id: u64) -> Result<(), GenerationBlocker> {
+        if self.recipe_by_id(id).master_seed == 0 {
             return Err(GenerationBlocker::MissingSeed);
         }
         if self.drag_before.is_some() {
@@ -1080,29 +1103,92 @@ impl Studio {
         if !self.generation.can_enqueue(1) {
             return Err(GenerationBlocker::QueueFull);
         }
-        self.decoration_panel.readiness()?;
+        if let Some(project) = self.recipe_tabs.parked(id) {
+            self.recipe_tabs.parked_readiness(id, project)?;
+            let cached = self.generation.other_validated_recipes.entry(id)
+                .or_insert_with(|| (project.clone(), Self::validate_generation_recipe(project)));
+            if cached.0 != *project {
+                *cached = (project.clone(), Self::validate_generation_recipe(project));
+            }
+            cached.1.clone()?;
+            return self.generation_source_readiness(project, false);
+        }
         let project = self.generation.run.as_ref().and_then(|run| run.template.as_ref()).unwrap_or(&self.project);
+        self.decoration_panel.readiness()?;
+        self.water.readiness(project)?;
         let cached = &mut self.generation.validated_recipe;
         if cached.as_ref().is_none_or(|(recipe, _)| recipe != project) {
-            *cached = Some((
-                project.clone(),
-                Self::validate_generation_recipe(project),
-            ));
+            *cached = Some((project.clone(), Self::validate_generation_recipe(project)));
         }
         if let Some((_, Err(error))) = cached {
             return Err(error.clone());
         }
         self.generation_source_readiness(project, false)
     }
-    pub(super) fn generate_recipe(&mut self, ctx: &egui::Context) {
-        if self.document_recipe().master_seed == 0 {
+    #[cfg(test)]
+    fn generate_recipe(&mut self, ctx: &egui::Context) {
+        self.submit_active_recipe(Submission::Queue, ctx);
+    }
+
+    pub(super) fn submit_active_recipe(&mut self, submission: Submission, ctx: &egui::Context) {
+        self.generate_recipe_for(self.recipe_tabs.active(), submission, ctx);
+    }
+
+    fn generate_recipe_for(&mut self, id: u64, submission: Submission, ctx: &egui::Context) {
+        let recipe = self.recipe_by_id(id);
+        if recipe.master_seed == 0 {
             self.status = mapper_studio::MASTER_SEED_REQUIRED.into();
-            ctx.data_mut(|data| data.insert_temp(egui::Id::new("missing-master-seed"), true));
-            ctx.memory_mut(|memory| memory.request_focus(egui::Id::new("recipe-master-seed")));
-            self.show_tab(Tab::Recipe);
+            ctx.data_mut(|data| data.insert_temp(recipe_tabs::seed_id("missing-master-seed", id), true));
+            ctx.memory_mut(|memory| memory.request_focus(recipe_tabs::seed_id("recipe-master-seed", id)));
+            self.show_tab(Tab::Recipe(id));
             return;
         }
-        self.begin_generation(BatchPlan::exact(self.document_recipe().clone()), ctx);
+        self.submit_generation(id, BatchPlan::exact(recipe.clone()), submission, ctx);
+    }
+
+    pub(super) fn replace_recipe_draft(&mut self, recipe: Project) -> Project {
+        let selected = recipe.targets.first().map(|target| target.instance_id);
+        if let Some(draft) = self.generation.run.as_mut().and_then(|run| run.template.as_mut()) {
+            self.generation.draft_snapshot = None;
+            self.generation.draft_target = selected;
+            return std::mem::replace(draft, recipe);
+        }
+        let source_changed = self.project.installation != recipe.installation;
+        self.cancel_generation_work();
+        self.plugins.cancel();
+        self.topology_tool.cancel_stroke();
+        self.composition = Default::default();
+        self.layouts.clear();
+        self.active_layout = None;
+        self.selected = selected.map(|_| 0);
+        self.restore_source |= source_changed;
+        let old = std::mem::replace(&mut self.project, recipe);
+        if !self.preview_current() {
+            self.preview = None;
+            self.texture = None;
+            self.layer_texture = None;
+            self.map_colors = Default::default();
+            self.terrain_projection = Default::default();
+        }
+        old
+    }
+
+    fn use_queue_seed(&mut self, seed: u32) {
+        if seed == 0 || seed > mapper_studio::MAX_SEED || self.drag_before.is_some() {
+            return;
+        }
+        let busy = self.generation.run.as_ref().is_some_and(|run| run.template.is_some());
+        self.with_recipe_draft(|studio| {
+            if studio.project.master_seed != seed {
+                let previous = (!busy).then(|| studio.project.clone());
+                studio.project.master_seed = seed;
+                studio.project.refresh_inherited_seeds();
+                if let Some(previous) = previous {
+                    studio.history.record(previous, &studio.project);
+                    studio.skip_history = true;
+                }
+            }
+        });
     }
 
     pub(super) fn randomize_master_seed(&mut self) {
@@ -1136,6 +1222,7 @@ impl Studio {
             if self.project == template {
                 return;
             }
+            self.restore_source |= self.project.installation != template.installation;
             self.project = template;
             self.composition = Default::default();
             self.layouts.clear();
@@ -1192,11 +1279,27 @@ impl Studio {
         true
     }
 
+    #[cfg(test)]
     pub(super) fn begin_generation(&mut self, plan: BatchPlan, ctx: &egui::Context) {
+        self.submit_generation(self.recipe_tabs.active(), plan, Submission::Queue, ctx);
+    }
+
+    fn submit_generation(&mut self, id: u64, plan: BatchPlan, submission: Submission, ctx: &egui::Context) {
+        if submission == Submission::Run
+            && let Some(reason) = self.run_blocker(plan.count)
+        {
+            self.status = reason.into();
+            return;
+        }
         let count = plan.count as u64;
-        match self.enqueue_generation(plan, ctx, false) {
+        let origin = self.recipe_tabs.origin(id);
+        match self.enqueue_generation_from(plan, ctx, false, Some(origin)) {
             Ok(first) => {
                 self.generation.pending_tabs.extend(first..first + count);
+                if submission == Submission::Run {
+                    self.generation.execution.requested_parallel.extend(first..first + count);
+                    self.start_requested_parallel(ctx);
+                }
                 self.show_tab(Tab::Generated(first));
                 ctx.request_repaint();
             }
@@ -1204,7 +1307,18 @@ impl Studio {
         }
     }
 
-    fn enqueue_generation(&mut self, mut plan: BatchPlan, ctx: &egui::Context, preserve_recipe: bool) -> Result<u64, String> {
+    #[cfg(test)]
+    fn enqueue_generation(&mut self, plan: BatchPlan, ctx: &egui::Context, preserve_recipe: bool) -> Result<u64, String> {
+        self.enqueue_generation_from(plan, ctx, preserve_recipe, None)
+    }
+
+    fn enqueue_generation_from(
+        &mut self,
+        mut plan: BatchPlan,
+        ctx: &egui::Context,
+        preserve_recipe: bool,
+        origin: Option<recipe_tabs::RecipeOrigin>,
+    ) -> Result<u64, String> {
         if self.drag_before.is_some() {
             return Err("Finish moving the recipe monument before generating.".into());
         }
@@ -1217,16 +1331,26 @@ impl Studio {
         }
         // Edits and requeued maps retain their exact recipe. Only new map
         // requests upgrade defaults or populate the roster.
-        let working_recipe = !preserve_recipe && plan.recipe == *self.document_recipe();
+        let working_recipe = !preserve_recipe
+            && origin.as_ref().is_none_or(|origin| origin.id == self.recipe_tabs.active())
+            && plan.recipe == *self.document_recipe();
         if !preserve_recipe {
             mapper_studio::generation_defaults::apply(&mut plan.recipe);
         }
         self.generation_preflight(
-            &plan.recipe, working_recipe || (!preserve_recipe && plan.recipe == self.project),
+            &plan.recipe, working_recipe || (!preserve_recipe
+                && origin.as_ref().is_none_or(|origin| origin.id == self.recipe_tabs.active())
+                && plan.recipe == self.project),
         )?;
         if !preserve_recipe {
             let catalog = self.prefabs.catalog(&plan.recipe);
             self.monuments.refresh_saved_roster(&mut plan.recipe, catalog.as_deref())?;
+        }
+        if !preserve_recipe
+            && let Some(origin) = &origin
+            && self.recipe_tabs.active() != origin.id
+        {
+            self.recipe_tabs.parked_readiness(origin.id, &plan.recipe)?;
         }
         let recipes = plan.recipes()?;
         if self.generation.next_id.checked_add(recipes.len() as u64).is_none() {
@@ -1265,6 +1389,7 @@ impl Studio {
                 recipe,
                 state: State::Waiting,
                 detail: String::new(),
+                origin: origin.clone(),
             });
         }
         if self.generation.busy() {
@@ -1280,7 +1405,7 @@ impl Studio {
             .and_then(|index| before.targets.get(index))
             .map(|target| target.instance_id);
         self.skip_history = true;
-        let template = if randomized || preserve_recipe {
+        let template = if randomized || preserve_recipe || !working_recipe {
             before
         } else {
             self.history.record(before, &self.project);
@@ -1297,7 +1422,7 @@ impl Studio {
         });
         self.topology_tool.enabled = false;
         self.topology_tool.cancel_stroke();
-        if self.generation.queue_paused {
+        if self.generation.queue_paused || self.primary_waits_for_extra() {
             self.generation.execution.start_pending = Some(preserve_recipe);
         } else {
             self.start_generation_candidate(ctx, preserve_recipe);
@@ -1337,7 +1462,11 @@ impl Studio {
             Err(GenerationBlocker::MatchingInstallation.message().into())
         } else {
             edit.recipe(&result.recipe, &result.monuments)
-                .and_then(|recipe| self.enqueue_generation(BatchPlan::exact(recipe), ctx, true))
+                .and_then(|recipe| {
+                    let origin = self.generation.queue.iter().find(|item| item.id == id)
+                        .and_then(|item| item.origin.clone());
+                    self.enqueue_generation_from(BatchPlan::exact(recipe), ctx, true, origin)
+                })
         };
         let edit = self.generation.edits.get_mut(&id).unwrap();
         match job {
@@ -1353,6 +1482,8 @@ impl Studio {
     pub(super) fn cancel_generation(&mut self) {
         self.generation.queue_paused = false;
         self.generation.execution.drain_parallel = false;
+        self.generation.execution.requested_parallel.clear();
+        self.generation.execution.next_primary = None;
         self.generation.execution.advance_pending = false;
         self.generation.execution.start_pending = None;
         self.generation.execution.placement_pending = false;
@@ -1406,6 +1537,9 @@ impl Studio {
             return;
         };
         self.move_waiting_map(id, next.id, ctx);
+        if self.generation.queue.iter().any(|item| item.id == id && item.state == State::Waiting) {
+            self.generation.execution.next_primary = Some(id);
+        }
     }
 
     fn move_waiting_map(&mut self, id: u64, target: u64, ctx: &egui::Context) {
@@ -1424,6 +1558,7 @@ impl Studio {
         } else {
             self.generation.queue[to..=from].rotate_right(1);
         }
+        self.generation.execution.next_primary = None;
         self.generation.revealed_job = Some(run.active_id);
         self.generation.queue_focus = Some(id);
         self.generation.revision += 1;
@@ -1485,15 +1620,29 @@ impl Studio {
         self.record_generation_elapsed();
         self.generation.overview=None;
         self.generation.overview_ready=None;
+        let primary_waits = self.primary_waits_for_extra();
         let Some(run) = &mut self.generation.run else { return; };
-        let next = self.generation.queue.iter().enumerate().skip(run.finished + 1)
-            .find_map(|(index, item)| (item.state == State::Waiting).then_some(index));
-        if let Some(next) = next {
-            if self.generation.queue_paused {
+        let waiting = self.generation.queue.iter().enumerate().skip(run.finished + 1)
+            .filter(|(_, item)| item.state == State::Waiting);
+        if let Some((next, _)) = waiting.clone().next() {
+            if self.generation.queue_paused || primary_waits {
                 self.generation.execution.advance_pending = true;
                 return;
             }
+            let priority = self.generation.execution.next_primary.take();
+            let mut waiting = waiting;
+            let selected = priority.and_then(|id| {
+                waiting.clone().find_map(|(index, item)| (item.id == id).then_some(index))
+            }).or_else(|| waiting.find_map(|(index, item)| {
+                self.generation.execution.requested_parallel.contains(&item.id).then_some(index)
+            })).unwrap_or(next);
+            // Keep the ordinary waiting jobs in their existing order and inside
+            // the unconsumed portion of the primary run.
+            if selected != next {
+                self.generation.queue[next..=selected].rotate_right(1);
+            }
             let item = &mut self.generation.queue[next];
+            self.generation.execution.requested_parallel.remove(&item.id);
             let reuse_terrain = run.terrain_ready
                 || self.generation.edits.values().any(|edit| edit.job == Some(item.id));
             item.state = State::Running;
@@ -1581,15 +1730,17 @@ impl Studio {
                 }
             }
             GenerationBlocker::Overlay { anchor, message } => {
-                if ui.button("Fix overlay…").on_hover_text(message).clicked() {
+                if ui.button("Fix layout…").on_hover_text(message).clicked() {
                     self.with_recipe_draft(|studio| {
                         let recipe = &studio.project;
                         let identities = studio.source.bound_root_ref(recipe)
                             .and_then(|root| studio.prefabs.prepared_identities(recipe, root));
                         let path = identities.as_ref().and_then(|ids| ids.prefab_path(*anchor))
                             .unwrap_or_default().to_owned();
-                        let name = studio.monument_icons.name(Some(&path), "Monument overlay");
-                        studio.content.open_overlay_recovery(recipe, *anchor, path, name, message.clone());
+                        let name = studio.monument_icons.name(Some(&path), "Monument layout");
+                        studio.custom_monuments.close();
+                        studio.monument_dialog.page = super::monument_dialog::Page::Layouts;
+                        studio.content.open_overlay_recovery(recipe, studio.recipe_tabs.editor(), *anchor, path, name, message.clone());
                     });
                 }
                 ui.ctx().request_repaint_after(std::time::Duration::from_secs(2));
@@ -1619,8 +1770,13 @@ impl Studio {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn recipe_generate(&mut self, ui: &mut egui::Ui) {
-        let readiness = self.generation_readiness();
+        self.recipe_generate_for(ui, self.recipe_tabs.active());
+    }
+
+    pub(super) fn recipe_generate_for(&mut self, ui: &mut egui::Ui, id: u64) {
+        let readiness = self.generation_readiness_for(id);
         let blocker = readiness.as_ref().err();
         let preparation = self.source.inspection_token()
             .or_else(|| self.prefabs.preparation_token()).cloned();
@@ -1629,25 +1785,26 @@ impl Studio {
             && !matches!(recovery, Some(GenerationBlocker::MatchingInstallation
                 | GenerationBlocker::UnsupportedNativeProfile(_)
                 | GenerationBlocker::AssetsUnavailable | GenerationBlocker::Overlay { .. }));
-        egui::Panel::bottom("recipe-generate").exact_size(44.).resizable(false)
+        egui::Panel::bottom(recipe_tabs::seed_id("recipe-generate", id)).exact_size(44.).resizable(false)
             .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(4, 5)))
             .show(ui, |ui| {
                 let width = (ui.available_width() * 0.92).clamp(1., 260.);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.;
                     ui.add_space(((ui.available_width() - width) * 0.5).max(0.));
-                    self.generate_split_button(ui, width, readiness.is_ok(), blocker);
+                    self.generate_split_button(ui, width, readiness.is_ok(), blocker, id);
                 });
             });
         if show_setup || recovery.is_some() {
-            egui::Panel::bottom("recipe-readiness").exact_size(ui.spacing().interact_size.y)
+            egui::Panel::bottom(recipe_tabs::seed_id("recipe-readiness", id)).exact_size(ui.spacing().interact_size.y)
                 .resizable(false).frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(4, 0)))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         if let Some(token) = preparation.as_ref().filter(|_| show_setup) {
                             loading_ui::show(ui, loading_ui::Status::Preparing(token));
                         } else if let Some(error) = recovery {
-                            self.generation_blocker(ui, error);
+                            let ctx = ui.ctx().clone();
+                            self.with_recipe_editor(id, &ctx, |studio| studio.generation_blocker(ui, error));
                         }
                     });
                 });
@@ -1655,37 +1812,51 @@ impl Studio {
     }
 
     fn generate_split_button(
-        &mut self, ui: &mut egui::Ui, width: f32, enabled: bool, blocker: Option<&GenerationBlocker>,
+        &mut self,
+        ui: &mut egui::Ui,
+        width: f32,
+        enabled: bool,
+        blocker: Option<&GenerationBlocker>,
+        id: u64,
     ) {
         const HEIGHT: f32 = 34.;
         const RADIUS: u8 = 8;
         let batch_enabled = enabled || matches!(blocker, Some(GenerationBlocker::QueueFull));
-        let can_press = enabled || matches!(blocker, Some(GenerationBlocker::MissingSeed));
+        let can_queue = enabled || matches!(blocker, Some(GenerationBlocker::MissingSeed));
+        let run_blocker = self.run_blocker(1);
+        let can_run = can_queue && run_blocker.is_none();
+        let run_blue = enabled && run_blocker.is_none();
         let left = egui::CornerRadius { nw: RADIUS, sw: RADIUS, ne: 0, se: 0 };
         let right = egui::CornerRadius { nw: 0, sw: 0, ne: RADIUS, se: RADIUS };
-        let label = if self.generation.busy() { "Queue map" } else { "Generate" };
-        let (generate, batch) = ui.horizontal(|ui| {
+        let (queue, run, batch) = ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.;
-            let batch_width = 34_f32.min(width * 0.35);
+            let gap = 6_f32.min(width * 0.05);
+            let queue_width = (width - gap) * 0.38;
+            let batch_width = 32_f32.min(width * 0.17);
+            let run_width = (width - queue_width - gap - batch_width).max(0.);
+            let queue = ui.add_enabled(
+                can_queue,
+                egui::Button::new("Queue")
+                    .min_size(egui::vec2(queue_width, HEIGHT))
+                    .corner_radius(RADIUS)
+                    .truncate(),
+            );
+            ui.add_space(gap);
             let background = ui.painter().add(egui::Shape::Noop);
-            let muted_light = !enabled && !ui.visuals().dark_mode;
-            let label_color = if muted_light {
-                ui.visuals().weak_text_color()
-            } else {
-                Color32::WHITE
-            };
-            let main_button = egui::Button::new(egui::RichText::new(label).strong().color(label_color))
-                .min_size(egui::vec2(width - batch_width, HEIGHT))
+            let muted_light = !run_blue && !ui.visuals().dark_mode;
+            let label_color = if muted_light { ui.visuals().weak_text_color() } else { Color32::WHITE };
+            let run_button = egui::Button::new(egui::RichText::new("Run now").strong().color(label_color))
+                .min_size(egui::vec2(run_width, HEIGHT))
                 .truncate()
-                .frame(!enabled)
+                .frame(!run_blue)
                 .corner_radius(left);
-            let generate = if muted_light {
+            let run = if muted_light {
                 ui.scope(|ui| {
                     ui.visuals_mut().disabled_alpha = 1.;
-                    ui.add_enabled(can_press, main_button)
+                    ui.add_enabled(can_run, run_button)
                 }).inner
             } else {
-                ui.add_enabled(can_press, main_button)
+                ui.add_enabled(can_run, run_button)
             };
             let batch = ui.add_enabled(
                 batch_enabled,
@@ -1694,59 +1865,72 @@ impl Studio {
                     .frame(!batch_enabled)
                     .corner_radius(right),
             );
-            let fill = if enabled {
-                Some((generate.rect.union(batch.rect), egui::CornerRadius::same(RADIUS), 0.))
+            if run_blue {
+                ui.painter().set(background, workbench_style::generate_fill(
+                    ui.ctx(), run.rect.union(batch.rect), egui::CornerRadius::same(RADIUS), 0.,
+                ));
             } else if batch_enabled {
-                Some((batch.rect, right, 0.8))
-            } else {
-                None
-            };
-            if let Some((rect, corners, uv_start)) = fill {
-                ui.painter().set(background, workbench_style::generate_fill(ui.ctx(), rect, corners, uv_start));
+                ui.painter().set(background, workbench_style::generate_fill(ui.ctx(), batch.rect, right, 0.8));
+            }
+            if run_width >= 103. {
+                let at = egui::pos2(run.rect.left() + 12., run.rect.center().y);
+                ui.painter().add(egui::Shape::convex_polygon(
+                    vec![at + egui::vec2(-2., -4.), at + egui::vec2(5., 0.), at + egui::vec2(-2., 4.)],
+                    label_color,
+                    egui::Stroke::NONE,
+                ));
             }
             batch.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, batch_enabled, "Batch generation"));
-            let divider = if enabled {
+            let divider = if run_blue {
                 Color32::from_white_alpha(110)
             } else {
                 ui.visuals().weak_text_color().gamma_multiply(0.35)
             };
             ui.painter().vline(batch.rect.left(), batch.rect.y_range(), egui::Stroke::new(1., divider));
-            for (button, corners) in [(&generate, left), (&batch, right)] {
-                if button.enabled() && button.hovered() {
-                    ui.painter().rect_stroke(button.rect.shrink(1.), corners - 1,
-                        egui::Stroke::new(1., Color32::from_white_alpha(85)), egui::StrokeKind::Inside);
-                }
-                if button.has_focus() {
-                    ui.painter().rect_stroke(
-                        button.rect.shrink(2.),
-                        corners - 2,
-                        egui::Stroke::new(1., Color32::WHITE),
-                        egui::StrokeKind::Inside,
-                    );
-                }
+            for (button, corners) in [(&run, left), (&batch, right)] {
+                let stroke = if button.has_focus() {
+                    ui.visuals().selection.stroke
+                } else if button.hovered() && button.enabled() {
+                    egui::Stroke::new(1., Color32::from_white_alpha(85))
+                } else {
+                    continue;
+                };
+                ui.painter().rect_stroke(button.rect.shrink(1.), corners - 1, stroke, egui::StrokeKind::Inside);
             }
-            (generate, batch)
+            (queue, run, batch)
         }).inner;
-        let generate = generate.on_hover_text(if can_press && !enabled {
-            mapper_studio::MASTER_SEED_REQUIRED
-        } else { "Queue one map using this recipe’s seeds." });
+        let action_hint = |help: &'static str| {
+            if matches!(blocker, Some(GenerationBlocker::MissingSeed)) {
+                mapper_studio::MASTER_SEED_REQUIRED
+            } else {
+                help
+            }
+        };
+        let queue = queue.on_hover_text(action_hint("Add one map to the end of the queue."));
+        let run = run.on_hover_text(action_hint("Start one map immediately."));
         let batch = batch.on_hover_text("Batch generation");
         if let Some(blocker) = blocker {
-            generate.clone().on_disabled_hover_text(blocker.message());
+            queue.clone().on_disabled_hover_text(blocker.message());
             if !batch_enabled {
                 batch.clone().on_disabled_hover_text(blocker.message());
             }
         }
-        if generate.clicked() {
-            self.generate_recipe(ui.ctx());
+        if let Some(reason) = blocker.map(GenerationBlocker::message).or(run_blocker) {
+            run.clone().on_disabled_hover_text(reason);
+        }
+        if queue.clicked() {
+            self.generate_recipe_for(id, Submission::Queue, ui.ctx());
+        }
+        if run.clicked() {
+            self.generate_recipe_for(id, Submission::Run, ui.ctx());
         }
         let popup = egui::Popup::menu(&batch)
-            .anchor(generate.rect.union(batch.rect))
+            .anchor(run.rect.union(batch.rect))
             .align(egui::RectAlign::TOP_START)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
         let popup_id = popup.get_id();
         if batch_enabled {
-            popup.show(|ui| self.batch_menu(ui));
+            popup.show(|ui| self.batch_menu(ui, id));
         } else {
             egui::Popup::close_id(ui.ctx(), popup_id);
         }
@@ -1764,59 +1948,105 @@ impl Studio {
         ));
     }
 
-    fn batch_menu(&mut self, ui: &mut egui::Ui) {
-        ui.set_min_width(210.);
+    fn batch_menu(&mut self, ui: &mut egui::Ui, id: u64) {
+        let width = (ui.ctx().content_rect().width() - 24.).clamp(180., 295.);
+        ui.set_width(width);
+        ui.heading("Batch generation");
+        ui.add_space(4.);
         ui.horizontal(|ui| {
             let label = ui.label("Maps");
-            ui.add(egui::DragValue::new(&mut self.generation.count).range(1..=MAX_BATCH))
-                .labelled_by(label.id);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let count = &mut self.generation.count;
+                if ui.add_enabled(*count < MAX_BATCH, egui::Button::new("+")).on_hover_text("Add one map").clicked() {
+                    *count += 1;
+                }
+                ui.add(egui::DragValue::new(count).range(1..=MAX_BATCH)).labelled_by(label.id);
+                if ui.add_enabled(*count > 1, egui::Button::new("−")).on_hover_text("Remove one map").clicked() {
+                    *count -= 1;
+                }
+            });
         });
-        let available = available_seed_domains(self.document_recipe());
-        ui.collapsing("Vary independent seeds", |ui| {
-            for (i, name) in DOMAINS.iter().enumerate() {
-                ui.add_enabled(available[i], egui::Checkbox::new(&mut self.generation.randomize[i], *name))
-                    .on_hover_text("Choose a separate seed for this layer in each map.");
-            }
+        let seed_mode = ui.id().with("batch-random-master");
+        let mut random_master = ui.data(|data| data.get_temp::<bool>(seed_mode)).unwrap_or(true);
+        ui.horizontal(|ui| {
+            ui.label("Seed variation");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                egui::ComboBox::from_id_salt("batch-seed-mode")
+                    .selected_text(if random_master { "Master seed" } else { "Selected stages" })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut random_master, true, "Master seed");
+                        ui.selectable_value(&mut random_master, false, "Selected stages");
+                    });
+            });
         });
+        ui.data_mut(|data| data.insert_temp(seed_mode, random_master));
+        let available = available_seed_domains(self.recipe_by_id(id));
+        egui::CollapsingHeader::new("Vary stage seeds")
+            .default_open(!random_master)
+            .show(ui, |ui| {
+                for (i, name) in DOMAINS.iter().enumerate() {
+                    ui.add_enabled(available[i], egui::Checkbox::new(&mut self.generation.randomize[i], *name))
+                        .on_hover_text("Choose a separate seed for this stage in each map.");
+                }
+            });
+
         let count = self.generation.count;
         let randomize = std::array::from_fn(|i| available[i] && self.generation.randomize[i]);
         let slots = self.generation.available_slots();
-        let can_generate = count <= slots
-            && (count == 1 || has_varying_seeds(self.document_recipe(), true, randomize));
+        let has_variation = count == 1 || has_varying_seeds(self.recipe_by_id(id), random_master, randomize);
+        let can_queue = count <= slots && has_variation;
+        let run_blocker = self.run_blocker(count);
+        let can_run = can_queue && run_blocker.is_none();
+        ui.separator();
         if count > slots {
             let label = match slots {
                 0 => "Queue full".into(),
                 1 => "1 slot available".into(),
                 _ => format!("{slots} slots available"),
             };
-            let hint = if slots == 0 {
-                GenerationBlocker::QueueFull.message()
-            } else {
-                "Lower the map count, wait for a map to finish, or remove one in Queue."
-            };
-            ui.weak(label).on_hover_text(hint);
-        } else if !can_generate {
+            ui.weak(label).on_hover_text("Lower the map count, wait for a map to finish, or remove one in Queue.");
+        } else if !has_variation {
             ui.label(NO_SEED_VARIATION);
         }
-        let label = if count == 1 { "Generate 1 map".into() } else { format!("Generate {count} maps") };
-        if ui.add_enabled(can_generate, egui::Button::new(label))
-            .on_hover_text("Each map uses this recipe with a new master seed.")
-            .clicked()
-        {
+        let submission = ui.horizontal(|ui| {
+            let button_width = ((ui.available_width() - ui.spacing().item_spacing.x) / 2.).max(0.);
+            let size = egui::vec2(button_width, 30.);
+            let queue = ui.add_enabled(can_queue, egui::Button::new(format!("Queue {count}")).min_size(size))
+                .on_hover_text("Add the whole batch to the normal queue.");
+            let mut button = egui::Button::new(if can_run {
+                egui::RichText::new(format!("Run {count}")).color(Color32::WHITE)
+            } else {
+                egui::RichText::new(format!("Run {count}"))
+            }).min_size(size);
+            if can_run {
+                button = button.fill(workbench_style::PRIMARY_ACTION);
+            }
+            let run = ui.add_enabled(can_run, button)
+                .on_hover_text("Start this batch using available generation slots.");
+            if let Some(reason) = run_blocker {
+                run.clone().on_disabled_hover_text(reason);
+            }
+            if queue.clicked() { Some(Submission::Queue) }
+            else if run.clicked() { Some(Submission::Run) }
+            else { None }
+        }).inner;
+        if let Some(submission) = submission {
             let plan = BatchPlan {
                 count,
                 nonce: RandomState::new().hash_one(()),
-                random_master: true,
+                random_master,
                 randomize,
-                ..BatchPlan::exact(self.document_recipe().clone())
+                ..BatchPlan::exact(self.recipe_by_id(id).clone())
             };
             ui.close();
-            self.begin_generation(plan, ui.ctx());
+            self.submit_generation(id, plan, submission, ui.ctx());
         }
     }
     pub(super) fn tick_generation(&mut self, ctx: &egui::Context) {
         self.tick_queue_execution(ctx);
-        if !self.generation.busy() || self.queue_primary_paused() {
+        if !self.generation.busy() || self.queue_primary_paused()
+            || self.generation.execution.start_pending.is_some()
+        {
             return;
         }
         if self.generation.active_recipe() != Some(&self.project) {
@@ -2391,6 +2621,7 @@ impl Studio {
         };
         let cancelled_label = (item.state == State::Cancelled).then(|| item.label.clone());
         let plan = BatchPlan::exact(item.recipe.clone());
+        let origin = item.origin.clone();
         if mapper_studio::native_preview::is_native(&plan.recipe.preview_engine)
             && !self.source.inspecting()
             && self.source.bound_root_ref(&plan.recipe).is_none()
@@ -2399,7 +2630,7 @@ impl Studio {
             self.status = GenerationBlocker::MatchingInstallation.message().into();
             return;
         }
-        let new_id = match self.enqueue_generation(plan, ctx, true) {
+        let new_id = match self.enqueue_generation_from(plan, ctx, true, origin) {
             Ok(new_id) => new_id,
             Err(error) => {
                 self.status = error;
@@ -2453,7 +2684,7 @@ impl Studio {
             self.selected = None;
             self.drag_splat = None;
         }
-        self.show_tab(Tab::Recipe);
+        self.show_tab(Tab::Recipe(self.recipe_tabs.active()));
         self.status = "Recipe loaded.".into();
     }
 
@@ -2469,6 +2700,7 @@ impl Studio {
     fn apply_queue_action(&mut self, action: Option<QueueAction>, ctx: &egui::Context) {
         match action {
             Some(QueueAction::OpenMap(id)) => self.show_tab(Tab::Generated(id)),
+            Some(QueueAction::UseSeed(seed)) => self.use_queue_seed(seed),
             Some(QueueAction::LoadRecipe(id)) => self.load_queue_recipe(id),
             Some(QueueAction::CancelMap(id)) => self.cancel_queued_map(id, ctx),
             Some(QueueAction::StartMap(id)) => self.start_queue_job(id, ctx),
@@ -3017,6 +3249,9 @@ impl Studio {
         for (index, monument) in result.monuments.iter().enumerate() {
             if edit.monuments.excluded(index) { continue; }
             let moved = edit.poses.get(&index).copied();
+            let path = monument.prefab.as_deref();
+            if moved.is_none() && self.preferences.monument_marker_hidden(path) { continue; }
+            let display_name = self.preferences.monument_label(path, &monument.name);
             let point = marker_position(index, monument);
             if markers != mapper_studio::map_labels::Mode::Text
                 && !outer.expand(monument_icon_panel::ICON_SIDE).contains(point) { continue; }
@@ -3025,7 +3260,7 @@ impl Studio {
             if hidden_text && moved.is_none() { continue; }
             if markers == mapper_studio::map_labels::Mode::Text && !hidden_text
                 && !self.monument_icons.labels
-                    .bounds(ui.ctx(), result.map_font.as_ref(), &monument.name)
+                    .bounds(ui.ctx(), result.map_font.as_ref(), display_name)
                     .translate(point.to_vec2()).intersects(outer)
             {
                 continue;
@@ -3035,7 +3270,7 @@ impl Studio {
                 if hidden_text || markers == mapper_studio::map_labels::Mode::None
                     || !self.monument_icons.paint(&painter, point, monument.prefab.as_deref(),
                         &self.preferences, self.settings_path.as_deref(),
-                        map_label_panel::Text { name: &monument.name, source: result.map_font.as_ref() })
+                        map_label_panel::Text { name: display_name, source: result.map_font.as_ref() })
                 {
                     painter.circle_filled(point, monument_icon_panel::PLACED_RADIUS, if moved.is_some() {
                         Color32::from_rgb(255, 213, 138)
@@ -3055,10 +3290,11 @@ impl Studio {
             }
         }
         if let Some((_, point, monument, moved)) = hovered {
+            let name = self.preferences.monument_label(monument.prefab.as_deref(), &monument.name);
             let label = if moved {
-                Cow::Owned(format!("{} · Move preview", monument.name))
+                Cow::Owned(format!("{name} · Move preview"))
             } else {
-                Cow::Borrowed(monument.name.as_str())
+                Cow::Borrowed(name)
             };
             marker_label(&painter, outer, point, &label);
         } else if result.grid && edit.drag.is_none() && !edit.paths.dragging()
@@ -3960,7 +4196,7 @@ mod tests {
         app
     }
     fn queue_ready_recipe(app: &mut Studio, id:u64) {
-        app.generation.queue=vec![QueueItem {id,label:format!("Seed {}",app.project.seeds[0].value),
+        app.generation.queue=vec![QueueItem { origin: None,id,label:format!("Seed {}",app.project.seeds[0].value),
             recipe:app.project.clone(),state:State::Running,detail:String::new()}];
         app.generation.run=Some(Run {active_id:id,template:None,start:0,finished:0,terrain_ready:true});
     }
@@ -3973,7 +4209,7 @@ mod tests {
             queue_ready_recipe(&mut app, 1);
             let mut next_recipe = app.project.clone();
             next_recipe.seeds[0].value += 1;
-            app.generation.queue.push(QueueItem {
+            app.generation.queue.push(QueueItem { origin: None,
                 id: 2,
                 label: "Next seed".into(),
                 recipe: next_recipe.clone(),
@@ -4042,7 +4278,7 @@ mod tests {
             }
         }
         for id in (1..=5).rev() {
-            app.generation.queue.insert(0, QueueItem {
+            app.generation.queue.insert(0, QueueItem { origin: None,
                 id, label: format!("Map {id}"), recipe: app.project.clone(),
                 state: State::Ready, detail: String::new(),
             });
@@ -4173,7 +4409,7 @@ mod tests {
                 ..rivers
             }),
         );
-        app.generation.queue.push(QueueItem {
+        app.generation.queue.push(QueueItem { origin: None,
             id: 1,
             label: "Frozen recipe".into(),
             recipe: recipe.clone(),
@@ -4221,7 +4457,7 @@ mod tests {
         older.master_seed += 1;
         older.refresh_inherited_seeds();
         app.history.record(older.clone(), &recipe);
-        app.generation.queue.push(QueueItem {
+        app.generation.queue.push(QueueItem { origin: None,
             id: 1,
             label: "Retained failed map".into(),
             recipe: older.clone(),
@@ -4292,7 +4528,7 @@ mod tests {
         app.project.composition_engine = Some(
             papyrus_terrain::monument_composition::SOURCE_HEIGHT_VERSION.into(),
         );
-        app.generation.queue.push(QueueItem {
+        app.generation.queue.push(QueueItem { origin: None,
             id: 1,
             label: "Queued variant".into(),
             recipe: app.project.clone(),
@@ -4336,7 +4572,7 @@ mod tests {
         };
         let output = render(&mut app, vec![]);
         let pos = output.shapes.iter().find_map(|shape| match &shape.shape {
-            egui::Shape::Text(label) if label.galley.job.text == "Generate" => {
+            egui::Shape::Text(label) if label.galley.job.text == "Queue" => {
                 Some(label.pos + label.galley.rect.center().to_vec2())
             }
             _ => None,
@@ -4354,7 +4590,7 @@ mod tests {
         let running = app.project.clone();
         app.with_recipe_draft(|studio| studio.project.size += 100);
         assert!(render(&mut app, vec![]).shapes.iter().any(|shape| {
-            matches!(&shape.shape, egui::Shape::Text(label) if label.galley.job.text == "Queue map")
+            matches!(&shape.shape, egui::Shape::Text(label) if label.galley.job.text == "Queue")
         }));
         click_generate(&mut app);
         assert_eq!(app.project, running);
@@ -4460,6 +4696,93 @@ mod tests {
         tabs.on_close(&mut Tab::Generated(2));
         tabs.finish(&mut dock);
         assert_eq!(dock.find_tab(&Tab::Map), Some(anchor));
+    }
+
+    #[test]
+    fn named_recipe_generation_keeps_queued_snapshots_and_active_seed_independent() {
+        let ctx = egui::Context::default();
+        let mut app = crate::tests::fixture(&ctx);
+        let first = app.project.clone();
+        let mut island = first.clone();
+        island.master_seed = 45678;
+        island.refresh_inherited_seeds();
+        assert!(app.import_named_recipe("Island Test", island.clone()));
+        let second = app.recipe_tabs.active();
+        app.activate_recipe(FIRST_RECIPE);
+        app.generation.queue_paused = true;
+
+        app.generate_recipe_for(second, Submission::Queue, &ctx);
+        assert_eq!(app.recipe_tabs.active(), FIRST_RECIPE);
+        let queued = &app.generation.queue[0];
+        assert_eq!(queued.origin.as_ref().unwrap().name, "Island Test");
+        assert_eq!(queued.recipe.master_seed, island.master_seed);
+        let working = app.project.clone();
+        assert_eq!(app.document_recipe(), &first);
+
+        app.apply_queue_action(Some(QueueAction::UseSeed(789)), &ctx);
+        assert_eq!(app.document_recipe().master_seed, 789);
+        assert_eq!(app.project, working);
+        app.activate_recipe(second);
+        assert_eq!(app.document_recipe(), &island);
+        assert_eq!(app.project, working);
+
+        app.with_recipe_editor(FIRST_RECIPE, &ctx, |studio| {
+            studio.project.master_seed = 987;
+            studio.project.refresh_inherited_seeds();
+        });
+        assert_eq!(app.recipe_by_id(FIRST_RECIPE).master_seed, 987);
+        assert_eq!(app.document_recipe(), &island);
+        assert_eq!(app.generation.queue[0].recipe.master_seed, island.master_seed);
+        app.finish_generation_run();
+        assert_eq!(app.document_recipe(), &island);
+        app.activate_recipe(FIRST_RECIPE);
+        assert_eq!(app.document_recipe().master_seed, 987);
+        app.apply_queue_action(Some(QueueAction::UseSeed(555)), &ctx);
+        assert_eq!(app.document_recipe().master_seed, 555);
+        app.history.undo(&mut app.project);
+        assert_eq!(app.document_recipe().master_seed, 987);
+    }
+
+    #[test]
+    fn named_recipe_docked_panes_render_two_independent_generate_buttons() {
+        let ctx = egui::Context::default();
+        workbench_style::install(&ctx);
+        let mut app = crate::tests::fixture(&ctx);
+        let mut other = app.project.clone();
+        other.master_seed = 45678;
+        other.refresh_inherited_seeds();
+        assert!(app.import_named_recipe("Island Test", other));
+        let second = app.recipe_tabs.active();
+        app.activate_recipe(FIRST_RECIPE);
+
+        let mut dock = DockState::new(vec![Tab::Recipe(FIRST_RECIPE)]);
+        dock.main_surface_mut().split_right(NodeIndex::root(), 0.5, vec![Tab::Recipe(second)]);
+        let mut textures = snapshot::Textures::default();
+        for _ in 0..2 {
+            let mut frame = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(940., 620.))),
+                    ..Default::default()
+                },
+                |ui| {
+                    let mut tabs = Tabs::new(&mut app, None, &dock);
+                    DockArea::new(&mut dock).style(workbench_style::dock(ui)).show_inside(ui, &mut tabs);
+                    tabs.finish(&mut dock);
+                },
+            );
+            textures.update(&frame.textures_delta);
+            frame.textures_delta.clear();
+            let labels = frame.shapes.iter().filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.job.text == "Run now" => Some(text.pos.x),
+                _ => None,
+            }).collect::<Vec<_>>();
+            if let [first, second] = labels.as_slice() {
+                assert!((first - second).abs() > 300.);
+                assert_eq!(app.recipe_tabs.active(), FIRST_RECIPE);
+                return;
+            }
+        }
+        panic!("Each docked recipe should render a Generate button");
     }
 
     #[test]
@@ -4811,7 +5134,7 @@ mod tests {
             placed: 3, missing: 0, monuments, routes: Vec::new(), restrictions: Default::default(),
             grid: false, no_build: false, map_font: None, background: MAP_BACKGROUND, palette: None,
         });
-        app.generation.queue.push(QueueItem {
+        app.generation.queue.push(QueueItem { origin: None,
                        id, label: "Edited map".into(), recipe: recipe.clone(), state: State::Ready,
             detail: String::new(),
         });
@@ -5186,7 +5509,7 @@ mod tests {
             let mut app = super::super::tests::fixture(&ctx);
             let mut recipe = app.project.clone();
             recipe.size += 100;
-            app.generation.queue.push(QueueItem {
+            app.generation.queue.push(QueueItem { origin: None,
                 id: 1,
                 label: "Seed 24680 · 1".into(),
                 recipe: recipe.clone(),
@@ -5467,7 +5790,7 @@ mod tests {
         assert!(app.placement_task.is_none());
         app.load_queue_recipe(failed_id);
         assert_eq!(app.project, recipes[0]);
-        assert_eq!(app.requested_tab, Some(Tab::Recipe));
+        assert_eq!(app.requested_tab, Some(Tab::Recipe(FIRST_RECIPE)));
         assert!(!app.generation_in_progress());
         assert_eq!(app.generation.queue[0].detail, reason);
         assert_eq!(app.generation.results.len(), 2);
@@ -5527,7 +5850,7 @@ mod tests {
                 });
                 let mut app = super::super::tests::fixture(&ctx);
                 let recipe = app.project.clone();
-                app.generation.queue.push(QueueItem {
+                app.generation.queue.push(QueueItem { origin: None,
                     id: 1,
                     label: "Seed 24680".into(),
                     recipe: recipe.clone(),
@@ -5553,7 +5876,7 @@ mod tests {
                 initial.textures_delta.clear();
                 assert!(!visible(&initial, body));
                 app.load_queue_recipe(1);
-                assert_eq!(app.requested_tab, Some(Tab::Recipe));
+                assert_eq!(app.requested_tab, Some(Tab::Recipe(FIRST_RECIPE)));
                 for _ in 0..4 {
                     let mut opened = frame(&mut app);
                     textures.update(&opened.textures_delta);
@@ -5614,7 +5937,7 @@ mod tests {
         ctx.global_style_mut(|style| style.animation_time = 0.);
         let mut app = super::super::tests::fixture(&ctx);
         for id in 1..=MAX_BATCH as u64 {
-            app.generation.queue.push(QueueItem {
+            app.generation.queue.push(QueueItem { origin: None,
                 id,
                 label: format!("Map {id}"),
                 recipe: app.project.clone(),
@@ -5758,7 +6081,7 @@ mod tests {
             "Composition unavailable: Connected rail fixed heights conflict with terrain/earthwork bounds at track 2, control 0\nRail recovery details: {}",
             "Detailed constraint. ".repeat(250),
         );
-        let item = std::cell::RefCell::new(QueueItem {
+        let item = std::cell::RefCell::new(QueueItem { origin: None,
             id: 1,
             label: "Seed 24680 · 3".into(),
             recipe: app.project.clone(),
@@ -6110,7 +6433,7 @@ mod tests {
         let ctx = egui::Context::default();
         workbench_style::install(&ctx);
         let mut app = super::super::tests::fixture(&ctx);
-        app.generation.queue = (0..5).map(|id| QueueItem {
+        app.generation.queue = (0..5).map(|id| QueueItem { origin: None,
             id,
             label: format!("Seed 24680 · {id}"),
             recipe: Project::default(),
@@ -6161,7 +6484,7 @@ mod tests {
         let recipe = app.project.clone();
         let states = [State::Ready, State::Running, State::Waiting, State::Waiting,
             State::Failed, State::Incomplete, State::Cancelled];
-        app.generation.queue = states.into_iter().enumerate().map(|(i, state)| QueueItem {
+        app.generation.queue = states.into_iter().enumerate().map(|(i, state)| QueueItem { origin: None,
             id: i as u64 + 1,
             label: format!("Seed {}", i + 1),
             recipe: recipe.clone(),
@@ -6316,7 +6639,7 @@ mod tests {
                 ]
                 .into_iter()
                 .enumerate()
-                .map(|(i, state)| QueueItem {
+                .map(|(i, state)| QueueItem { origin: None,
                     id: i as u64 + 1,
                     label: format!("Seed 24680 · {}", i + 1),
                     recipe: recipe.clone(),
@@ -6386,7 +6709,7 @@ mod tests {
                 }
                 assert_eq!(app.project, recipe);
                 let bounds=|tab|app.dock.find_tab(&tab).and_then(|p|app.dock.leaf(p.node_path()).ok()).map(|leaf|leaf.rect).unwrap();
-                assert!(bounds(Tab::Recipe).width()<size[0] as f32*0.3);
+                assert!(bounds(Tab::Recipe(FIRST_RECIPE)).width()<size[0] as f32*0.3);
                 assert!(bounds(Tab::Generated(1)).width()>size[0] as f32*0.4);
                 assert!(bounds(Tab::Outliner).left()>bounds(Tab::Generated(1)).left());
                 assert_eq!(app.generation.results[0].zoom, 1.);
@@ -6499,14 +6822,17 @@ mod tests {
             render(app, vec![])
         };
         let frame = render(&mut app, vec![]);
-        let generate = text_rect(&frame, "Generate").unwrap().center();
+        let generate = text_rect(&frame, "Run now").unwrap().center();
         let split_button = frame.shapes.iter().find_map(|shape| match &shape.shape {
             egui::Shape::Rect(rect) if rect.brush.is_some() && rect.rect.contains(generate) => Some(rect.rect),
             _ => None,
         }).expect("Generate has a visible split-button background");
         let dropdown = egui::pos2(split_button.right() - 17., generate.y);
         let menu = click(&mut app, dropdown);
-        let advanced = text_rect(&menu, "Vary independent seeds").unwrap();
+        assert!(text_rect(&menu, "Batch generation").is_some());
+        assert!(text_rect(&menu, "Queue 4").is_some());
+        assert!(text_rect(&menu, "Run 4").is_some());
+        let advanced = text_rect(&menu, "Vary stage seeds").unwrap();
         assert!(advanced.bottom() < generate.y);
         click(&mut app, advanced.center());
         let mut menu = render(&mut app, vec![]);
@@ -6517,7 +6843,7 @@ mod tests {
             assert!(text_rect(&menu, "Terrain").is_some());
         }
         assert_eq!(app.project, original);
-        click(&mut app, text_rect(&menu, "Generate 4 maps").unwrap().center());
+        click(&mut app, text_rect(&menu, "Queue 4").unwrap().center());
         assert_eq!(app.generation.queue.len(), 4);
         let mut masters = std::collections::BTreeSet::from([original.master_seed]);
         for item in &app.generation.queue {
@@ -6536,18 +6862,18 @@ mod tests {
         assert_eq!(app.generation.queue.len(), MAX_BATCH);
         assert_eq!(app.generation_readiness(), Err(GenerationBlocker::QueueFull));
         let active = render(&mut app, vec![]);
-        let generate = text_rect(&active, "Queue map").unwrap().center();
+        let generate = text_rect(&active, "Queue").unwrap().center();
         let dropdown = egui::pos2(dropdown.x, generate.y);
         assert!(text_rect(&click(&mut app, generate), "Queue full").is_some());
         assert_eq!(app.generation.queue.len(), MAX_BATCH);
 
         let menu = click(&mut app, dropdown);
-        assert!(text_rect(&menu, "Generate 4 maps").is_some());
+        assert!(text_rect(&menu, "Queue 4").is_some());
         let last_waiting = app.generation.queue.last().unwrap().id;
         app.cancel_queued_map(last_waiting, &ctx);
         let menu = render(&mut app, vec![]);
         assert!(text_rect(&menu, "1 slot available").is_some());
-        click(&mut app, text_rect(&menu, "Generate 4 maps").unwrap().center());
+        click(&mut app, text_rect(&menu, "Queue 4").unwrap().center());
         assert_eq!(app.generation.queue.len(), MAX_BATCH - 1);
         assert!(app.generation_readiness().is_ok());
 
@@ -6630,12 +6956,12 @@ mod tests {
         ctx.set_theme(egui::Theme::Light);
         let mut app = super::super::tests::fixture(&ctx);
         let mut frame = ctx.run_ui(egui::RawInput::default(), |ui| {
-            app.generate_split_button(ui, 260., false, Some(&GenerationBlocker::AssetsUnavailable));
+            app.generate_split_button(ui, 260., false, Some(&GenerationBlocker::AssetsUnavailable), FIRST_RECIPE);
         });
 
         frame.textures_delta.clear();
         let text = frame.shapes.iter().find_map(|shape| match &shape.shape {
-            egui::Shape::Text(text) if text.galley.job.text == "Generate" => Some(text),
+            egui::Shape::Text(text) if text.galley.job.text == "Run now" => Some(text),
             _ => None,
         }).expect("disabled Generate label is painted");
         let colors = &ctx.style_of(egui::Theme::Light).visuals;
@@ -6671,7 +6997,7 @@ mod tests {
                 if matches!(state, "busy" | "full") {
                     let total = if state == "full" { MAX_BATCH } else { 2 };
                     app.generation.queue = (0..total)
-                        .map(|index| QueueItem {
+                        .map(|index| QueueItem { origin: None,
                             id: index as u64 + 1,
                             label: format!("Seed {}", index + 1),
                             recipe: app.project.clone(),
@@ -6727,7 +7053,7 @@ mod tests {
                 assert!(!output.shapes.iter().any(
                     |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.job.text == "Ready")
                 ));
-                let action = if app.generation.busy() { "Queue map" } else { "Generate" };
+                let action = "Run now";
                 assert!(output.shapes.iter().any(
                     |s| matches!(&s.shape,egui::Shape::Text(t) if t.galley.job.text == action)
                 ));

@@ -34,7 +34,39 @@ pub(super) struct DecorPanel {
     pending_decoration: Option<(Project, mapper_studio::decor_source::Recipe)>,
     prepared_cliffs: Option<mapper_studio::client_preparation::ReadyCliffs>,
 }
+#[derive(Default)]
+pub(super) struct RecipeWork {
+    live_inputs: Option<mapper_studio::object_preparation::Inputs>,
+    live_task: mapper_studio::object_preparation::Preparation,
+    live_message: String,
+    live_error: Option<String>,
+    pending_decoration: Option<(Project, mapper_studio::decor_source::Recipe)>,
+}
+impl RecipeWork {
+    pub(super) fn readiness(&self) -> Result<(), String> {
+        recipe_readiness(self.live_error.is_some(), self.pending_decoration.is_some() || self.live_task.running())
+    }
+}
+
+fn recipe_readiness(failed: bool, pending: bool) -> Result<(), String> {
+    if failed {
+        Err("Scenery setup failed. Retry or disable it in Scenery & objects.".into())
+    } else if pending {
+        Err("Preparing scenery placement".into())
+    } else {
+        Ok(())
+    }
+}
+
 impl DecorPanel {
+    pub(super) fn swap_recipe_work(&mut self, work: &mut RecipeWork) {
+        std::mem::swap(&mut self.live_inputs, &mut work.live_inputs);
+        std::mem::swap(&mut self.live_task, &mut work.live_task);
+        std::mem::swap(&mut self.live_message, &mut work.live_message);
+        std::mem::swap(&mut self.live_error, &mut work.live_error);
+        std::mem::swap(&mut self.pending_decoration, &mut work.pending_decoration);
+    }
+
     pub fn accept_cliffs(
         &mut self,
         prepared: Option<mapper_studio::client_preparation::ReadyCliffs>,
@@ -52,13 +84,7 @@ impl DecorPanel {
             .is_some_and(|ready| ready.apply(project, root, catalog))
     }
     pub fn readiness(&self) -> Result<(), String> {
-        if self.live_error.is_some() {
-            return Err("Scenery setup failed. Retry or disable it in Scenery & objects.".into());
-        }
-        if self.pending_decoration.is_some() || self.live_task.running() {
-            return Err("Preparing scenery placement".into());
-        }
-        Ok(())
+        recipe_readiness(self.live_error.is_some(), self.pending_decoration.is_some() || self.live_task.running())
     }
     pub fn accept_prepared(&mut self, project: &Project, root: PathBuf, catalog: &Catalog, source: Arc<Source>) {
         let pin = project.decoration.as_ref().map(|r| r.source_sha256.clone());
@@ -76,52 +102,7 @@ impl DecorPanel {
         bindings: Option<Arc<mapper_studio::prefab_textures::Bindings>>,
         ctx: &egui::Context,
     ) {
-        if self
-            .pending_decoration
-            .as_ref()
-            .is_some_and(|(before, _)| before != project)
-        {
-            self.pending_decoration = None;
-            self.live_task.cancel();
-            self.live_error = None;
-            self.live_message =
-                "Decoration preparation cancelled because the recipe changed.".into();
-        }
-        let live_inputs = root.as_ref().and_then(|root| {
-            catalog
-                .clone()
-                .zip(bindings)
-                .filter(|(_, bindings)| bindings.installation_root() == root)
-                .and_then(|(catalog, bindings)| {
-                    mapper_studio::object_preparation::Inputs::refresh(
-                        self.live_inputs.take(),
-                        project,
-                        catalog,
-                        bindings,
-                        self.pending_decoration.as_ref().map(|(_, decoration)| decoration),
-                    )
-                })
-        });
-        if self.live_task.discard_changed(live_inputs.as_ref()) {
-            self.pending_decoration = None;
-            self.live_error = None;
-            self.live_message = "Verification canceled because the recipe or installation changed. Enable shared placement again when ready.".into();
-        }
-        self.live_inputs = live_inputs;
-        if self.pending_decoration.is_some() && !self.live_task.running() && self.live_error.is_none() {
-            if let Some(inputs) = self
-                .live_inputs
-                .as_ref()
-                .and_then(|i| i.with_project(project))
-            {
-                let repaint = ctx.clone();
-                self.live_task
-                    .start(inputs, move || repaint.request_repaint());
-            } else {
-                self.pending_decoration = None;
-                self.live_message="Verified installation data became unavailable. Enable decoration again when ready.".into();
-            }
-        }
+        self.tick_recipe_work(project, root.as_deref(), catalog.clone(), bindings, ctx);
 
         let inputs = root
             .zip(catalog)
@@ -187,6 +168,62 @@ impl DecorPanel {
             }
         }
     }
+    pub(super) fn tick_recipe_work(
+        &mut self,
+        project: &Project,
+        root: Option<&std::path::Path>,
+        catalog: Option<Arc<Catalog>>,
+        bindings: Option<Arc<mapper_studio::prefab_textures::Bindings>>,
+        ctx: &egui::Context,
+    ) {
+        if self
+            .pending_decoration
+            .as_ref()
+            .is_some_and(|(before, _)| before != project)
+        {
+            self.pending_decoration = None;
+            self.live_task.cancel();
+            self.live_error = None;
+            self.live_message =
+                "Decoration preparation cancelled because the recipe changed.".into();
+        }
+        let live_inputs = root.and_then(|root| {
+            catalog
+                .zip(bindings)
+                .filter(|(_, bindings)| bindings.installation_root() == root)
+                .and_then(|(catalog, bindings)| {
+                    mapper_studio::object_preparation::Inputs::refresh(
+                        self.live_inputs.take(),
+                        project,
+                        catalog,
+                        bindings,
+                        self.pending_decoration.as_ref().map(|(_, decoration)| decoration),
+                    )
+                })
+        });
+        if self.live_task.discard_changed(live_inputs.as_ref()) {
+            self.pending_decoration = None;
+            self.live_error = None;
+            self.live_message = "Verification canceled because the recipe or installation changed. Enable shared placement again when ready.".into();
+        }
+        self.live_inputs = live_inputs;
+        if self.pending_decoration.is_some() && !self.live_task.running() && self.live_error.is_none() {
+            if let Some(inputs) = self
+                .live_inputs
+                .as_ref()
+                .and_then(|i| i.with_project(project))
+            {
+                let repaint = ctx.clone();
+                self.live_task
+                    .start(inputs, move || repaint.request_repaint());
+            } else {
+                self.pending_decoration = None;
+                self.live_message="Verified installation data became unavailable. Enable decoration again when ready.".into();
+            }
+        }
+
+    }
+
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,

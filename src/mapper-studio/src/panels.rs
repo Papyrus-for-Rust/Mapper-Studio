@@ -88,15 +88,17 @@ fn in_recipe_tab(ui: &egui::Ui) -> bool {
 }
 
 impl Studio {
+    #[cfg(test)]
     pub(super) fn recipe(&mut self, ui: &mut egui::Ui) {
         self.with_recipe_draft(|studio| studio.recipe_controls(ui));
     }
 
-    fn recipe_controls(&mut self, ui: &mut egui::Ui) {
-        let recovery = self.generation.recipe_recovery.take();
+    pub(super) fn recipe_controls(&mut self, ui: &mut egui::Ui) {
+        let id = self.recipe_tabs.editor();
+        let recovery = if id == self.recipe_tabs.active() { self.generation.recipe_recovery.take() } else { None };
         let jump_button = ui.horizontal(|ui| {
             let width = (ui.available_width() - workbench_style::SETTINGS_BUTTON_WIDTH
-                - ui.spacing().item_spacing.x).max(1.);
+                - 22. - 2. * ui.spacing().item_spacing.x).max(1.);
             let jump = ui.add_sized([width, 30.], egui::Button::new(
             egui::Atoms::new(("Jump to", egui::Atom::grow(), egui::Atom::custom(
                 ui.id().with("recipe-jump-chevron"), Vec2::splat(12.),
@@ -105,7 +107,15 @@ impl Studio {
             if workbench_style::settings_button(ui, "Recipe settings")
                 .on_hover_text("Manage the recipe by topic.").clicked()
             {
+                self.recipe_tabs.settings_owner = Some(id);
                 self.recipe_settings_open = true;
+            }
+            let add = ui.add_enabled(self.recipe_tabs.can_add(), egui::Button::new("+").min_size(egui::vec2(22., 24.)))
+                .on_hover_text("New recipe")
+                .on_disabled_hover_text("This project has reached its recipe limit.");
+            add.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, add.enabled(), "New recipe"));
+            if add.clicked() {
+                self.recipe_tabs.pending_new = Some((id, false));
             }
             jump
         }).inner;
@@ -157,8 +167,15 @@ impl Studio {
         ];
         let pages = RecipeTab::ALL.into_iter().zip(icons)
             .map(|(tab, icon)| (tab, tab.label(), icon));
+        let id = self.recipe_tabs.settings_owner.unwrap_or(self.recipe_tabs.active());
+        let title = if self.recipe_tabs.multiple() {
+            format!("Recipe settings · {}", self.recipe_tabs.name(id))
+        } else {
+            "Recipe settings".into()
+        };
         let (tab, closed) = settings_dialog::show(
-            ctx, "mapper-recipe-settings", "Recipe settings", pages, self.recipe_settings_tab,
+            ctx, "mapper-recipe-settings", &title, pages, self.recipe_settings_tab,
+            false,
             |ui, topic| {
                 let info = egui::UiStackInfo::default().with_tag(RECIPE_TAB_CONTENT);
                 ui.scope_builder(egui::UiBuilder::new().ui_stack_info(info), |ui| {
@@ -166,13 +183,14 @@ impl Studio {
                         ui.heading(topic.label());
                         ui.add_space(4.);
                     }
-                    self.with_recipe_draft(|studio| studio.recipe_topic(ui, topic, None));
+                    self.with_recipe_editor(id, ctx, |studio| studio.recipe_topic(ui, topic, None));
                 });
             },
         );
         self.recipe_settings_tab = tab;
         self.recipe_settings_open = !closed;
         if closed {
+            self.recipe_tabs.settings_owner = None;
             ctx.data_mut(|data| data.remove::<String>(egui::Id::new(RECIPE_TITLE_TEMPLATE_DRAFT)));
         }
     }
@@ -393,7 +411,7 @@ impl Studio {
                 }
                 let id = if in_recipe_tab(ui) { "recipe-settings-master-seed" } else { "recipe-master-seed" };
                 ui.add(egui::TextEdit::singleline(&mut seed_text)
-                    .id(egui::Id::new(id))
+                    .id(recipe_tabs::seed_id(id, self.recipe_tabs.editor()))
                     .desired_width(field_width)
                     .min_size(Vec2::new(0., SEED_CONTROL_SIZE))
                     .margin(egui::Margin::symmetric(SEED_INSET, 3))
@@ -427,7 +445,7 @@ impl Studio {
             };
             settings_dialog::Icon::Refresh.paint(ui, rect.center(), 17., tint);
         });
-        let missing = egui::Id::new("missing-master-seed");
+        let missing = recipe_tabs::seed_id("missing-master-seed", self.recipe_tabs.editor());
         if self.project.master_seed != 0 {
             ui.data_mut(|data| data.remove::<bool>(missing));
         } else if ui.data(|data| data.get_temp::<bool>(missing)).unwrap_or(false) {
@@ -2558,10 +2576,10 @@ mod tests {
                 }
                 assert_eq!(app.project, before);
                 let output = last.unwrap();
-                let recipe_path = app.dock.find_tab(&Tab::Recipe).unwrap();
+                let recipe_path = app.dock.find_tab(&Tab::Recipe(FIRST_RECIPE)).unwrap();
                 let recipe_bounds = app.dock.leaf(recipe_path.node_path()).unwrap().rect;
                 for (panel, name) in [
-                    (Tab::Recipe, "Recipe"), (Tab::Map, "Recipe preview"),
+                    (Tab::Recipe(FIRST_RECIPE), "Recipe"), (Tab::Map, "Recipe preview"),
                     (Tab::Outliner, "Monuments"), (Tab::Inspector, "Selection"), (Tab::Queue, "Queue"),
                 ] {
                     let path = app.dock.find_tab(&panel).unwrap().node_path();
@@ -2775,7 +2793,7 @@ mod tests {
                 },
             ]);
         }
-        assert!(app.content.monument_settings_open());
+        assert_eq!(app.content.monument_settings_recipe(), Some(FIRST_RECIPE));
         assert_eq!(app.project.targets.len(), count);
         assert!(app.project.monument_addons.is_empty());
     }
