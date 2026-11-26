@@ -1040,9 +1040,12 @@ mod tests {
         (catalog, doc)
     }
     fn layers() -> Layers {
-        let (hr, n) = papyrus_terrain::native_layers::dimensions(1000).unwrap();
+        layers_for_size(1000)
+    }
+    fn layers_for_size(size: u32) -> Layers {
+        let (hr, n) = papyrus_terrain::native_layers::dimensions(size).unwrap();
         let mut layers = Layers {
-            size: 1000,
+            size,
             terrain_seed: 1,
             biome_seed: 1,
             height_resolution: hr,
@@ -1188,8 +1191,7 @@ mod tests {
         }).unwrap();
         assert_eq!(population, [(path.to_owned(), 1, Some(1))]);
 
-        let mut layers = layers();
-        layers.size = 3000;
+        let mut layers = layers_for_size(3000);
         assert!(matches!(source.evaluate(&layers, path, 1, 17, [0.; 2]).unwrap(), Check::Skipped(_)));
         let evaluate = |layers: &Layers| {
             source.evaluate_with_landmark_preference(layers, path, 1, 17, [0.; 2],
