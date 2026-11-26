@@ -456,14 +456,25 @@ impl Studio {
     fn additional_recipe_options(&mut self, ui: &mut egui::Ui, topic: RecipeTab) {
         use mapper_studio::recipe_options::Landmark;
         let (size, seed, stages) = (self.project.size, self.project.master_seed, self.project.seeds);
+        let landmark_source = (topic == RecipeTab::Landmarks).then(|| {
+            self.monuments.source.as_ref()?.stage_source.as_ref()
+                .zip(self.prefabs.catalog(&self.project))
+        }).flatten();
         let options = &mut self.project.options;
         if topic == RecipeTab::Landmarks {
             recipe_disclosure(ui, "Landmarks", "Set generation preferences for oasis, lake, and canyon variants.", |ui| {
                 for family in Landmark::ALL {
                     generation_rule(ui, family.label(), options.landmark(family),
-                        "Allow this landmark family and its variants to generate.",
+                        "Search more sites for this landmark. Installation size limits and terrain rules still apply.",
                         "Skip every variant in this landmark family.",
-                        "Use the normal landmark selection for this installation and terrain.");
+                        "Use the normal landmark search for this installation.");
+                    if options.landmark_choice(family) == Some(true)
+                        && let Some((source, catalog)) = &landmark_source
+                        && let Some(minimum) = source.landmark_minimum(catalog, family)
+                        && size < minimum
+                    {
+                        ui.weak(format!("{} requires {minimum} m or larger in this Rust installation.", family.label()));
+                    }
                 }
             });
         }
@@ -488,14 +499,12 @@ impl Studio {
                         *exclusion = include.map(|value| !value);
                     }
                 }
-                generation_rule(ui, "Build on roads", &mut options.build_on_roads,
+                generation_binary(ui, "Build on roads", &mut options.build_on_roads,
                     "Remove Road topology on export. Rail and monument restrictions stay active. The companion plugin also handles road collider checks.",
-                    "Keep Road topology and its construction restrictions.",
-                    "Keep standard road construction restrictions.");
-                generation_rule(ui, "Jungle spawns", &mut options.jungle_beach_spawns,
+                    "Keep Road topology and its construction restrictions.");
+                generation_binary(ui, "Jungle spawns", &mut options.jungle_beach_spawns,
                     "Blend a spawn-compatible biome into eligible jungle beach cells.",
-                    "Skip the jungle beach spawn adjustment.",
-                    "Use standard beach spawn rules.");
+                    "Skip the jungle beach spawn adjustment.");
                 ui.collapsing("Prefab blocklist", |ui| {
                     let id = ui.id().with("prefab-block-entry");
                     let mut entry = ui.data(|data| data.get_temp::<String>(id)).unwrap_or_default();
@@ -542,10 +551,9 @@ impl Studio {
         }
         if topic == RecipeTab::Output {
             recipe_disclosure(ui, "Output", "Configure the exported map filename, cargo route, and webhook.", |ui| {
-                generation_rule(ui, "Bake cargo route", &mut options.cargo_path,
+                generation_binary(ui, "Bake cargo route", &mut options.cargo_path,
                     "Save an offshore route for the Papyrus Cargo Route or CargoPath server plugin.",
-                    "Export without a baked cargo route.",
-                    "Let the server generate the cargo ship route.");
+                    "Export without a baked cargo route.");
                 filename_template_editor(ui, &mut options.filename_template);
                 if in_recipe_tab(ui) {
                     let id = egui::Id::new(RECIPE_TITLE_TEMPLATE_DRAFT);
@@ -1185,6 +1193,12 @@ fn generation_rule(ui: &mut egui::Ui, name: &str, value: &mut Option<bool>, yes:
     }
 }
 
+fn generation_binary(ui: &mut egui::Ui, name: &str, value: &mut Option<bool>, yes: &str, no: &str) {
+    if let Some(choice) = generation_segments(ui, name, Some(value.unwrap_or(false)), yes, no, None) {
+        *value = choice;
+    }
+}
+
 /// Edit a generation override. An unset value inherits the generator default.
 pub(super) fn generation_override(
     ui: &mut egui::Ui,
@@ -1194,16 +1208,43 @@ pub(super) fn generation_override(
     no_help: &str,
     default_help: &str,
 ) -> Option<Option<bool>> {
+    generation_segments(ui, name, value, yes_help, no_help, Some(default_help))
+}
+
+fn generation_segments(
+    ui: &mut egui::Ui,
+    name: &str,
+    value: Option<bool>,
+    yes_help: &str,
+    no_help: &str,
+    default_help: Option<&str>,
+) -> Option<Option<bool>> {
     ui.push_id(name, |ui| {
         ui.horizontal(|ui| {
-            let in_settings = in_recipe_tab(ui);
-            let choice_width = if in_settings { 41. } else { 25. };
-            let choice_gap = if in_settings { 1. } else { 2. };
-            let default_gap = if in_settings { 7. } else { 0. };
             let height = ui.spacing().interact_size.y;
-            let label_width = (ui.available_width()
-                - ui.spacing().item_spacing.x - 3. * (choice_width + choice_gap) - default_gap)
-                .max(0.);
+            let font = egui::TextStyle::Button.resolve(ui.style());
+            let visuals = ui.visuals();
+            let color = visuals.text_color();
+            let fill = visuals.extreme_bg_color;
+            let border = visuals.widgets.noninteractive.bg_stroke;
+            let selected_fill = visuals.selection.bg_fill;
+            let selected_text = visuals.selection.stroke.color;
+            let hover_fill = visuals.widgets.hovered.weak_bg_fill;
+            let focus_stroke = visuals.selection.stroke;
+            let choices = [
+                Some(("Yes", Some(true), yes_help)),
+                Some(("No", Some(false), no_help)),
+                default_help.map(|help| ("?", None, help)),
+            ];
+            let segment = |text: &str| {
+                ui.painter().layout_no_wrap(text.into(), font.clone(), color).size().x.ceil()
+                    + if in_recipe_tab(ui) { 18. } else { 10. }
+            };
+            let widths = choices.map(|choice| choice.map_or(0., |(text, _, _)| segment(text)));
+            let track_width = widths.iter().sum::<f32>() + 4.;
+            let scroll = ui.spacing().scroll;
+            let gutter = if scroll.floating { scroll.bar_width + scroll.bar_inner_margin } else { 0. };
+            let label_width = (ui.available_width() - ui.spacing().item_spacing.x - track_width - gutter).max(0.);
             let label = ui.allocate_ui_with_layout(
                 egui::vec2(label_width, height),
                 egui::Layout::left_to_right(egui::Align::Center),
@@ -1213,40 +1254,36 @@ pub(super) fn generation_override(
                 },
             ).inner;
             let label = recipe_help(label, false, yes_help);
-            let mut change = None;
-            ui.scope(|ui| {
-                ui.spacing_mut().item_spacing.x = choice_gap;
-                ui.spacing_mut().button_padding.x = 3.;
-                for (title, option, description) in [
-                    ("Yes", Some(true), yes_help),
-                    ("No", Some(false), no_help),
-                    ("?", None, default_help),
-                ] {
-                    let mut button = egui::Button::selectable(value == option, title);
-                    if in_settings {
-                        let corners = match option {
-                            Some(true) => egui::CornerRadius { nw: 7, sw: 7, ne: 0, se: 0 },
-                            Some(false) => egui::CornerRadius { nw: 0, sw: 0, ne: 7, se: 7 },
-                            None => egui::CornerRadius::same(7),
-                        };
-                        if option.is_none() { ui.add_space(default_gap); }
-                        button = button.frame(true).frame_when_inactive(true).corner_radius(corners);
-                    } else {
-                        button = button.small();
-                    }
-                    let response = recipe_help(
-                        ui.add_sized(
-                            [choice_width, height], button,
-                        ).labelled_by(label.id),
-                        option.is_none(),
-                        description,
-                    );
-                    if response.clicked() && value != option {
-                        change = Some(option);
-                    }
+            let (track, _) = ui.allocate_exact_size(egui::vec2(track_width, height), egui::Sense::hover());
+            ui.painter().rect(track, 7, fill, border, egui::StrokeKind::Inside);
+            let mut offset = track.left() + 2.;
+            let mut changed = None;
+            for (choice, width) in choices.into_iter().zip(widths) {
+                let Some((title, option, description)) = choice else { continue };
+                let bounds = egui::Rect::from_min_size(
+                    egui::pos2(offset, track.top() + 2.),
+                    egui::vec2(width, height - 4.),
+                );
+                offset += width;
+                let selected = value == option;
+                let response = ui.interact(bounds, ui.id().with(title), egui::Sense::click())
+                    .labelled_by(label.id);
+                response.widget_info(|| egui::WidgetInfo::selected(
+                    egui::WidgetType::Button, response.enabled(), selected, title,
+                ));
+                if selected || response.hovered() {
+                    ui.painter().rect_filled(bounds, 5, if selected { selected_fill } else { hover_fill });
                 }
-            });
-            change
+                if response.has_focus() {
+                    ui.painter().rect_stroke(bounds, 5, focus_stroke, egui::StrokeKind::Inside);
+                }
+                ui.painter().text(bounds.center(), egui::Align2::CENTER_CENTER, title, font.clone(),
+                    if selected { selected_text } else { color });
+                if recipe_help(response, option.is_none(), description).clicked() && !selected {
+                    changed = Some(option);
+                }
+            }
+            changed
         }).inner
     }).inner
 }
@@ -1957,6 +1994,7 @@ mod tests {
                 output
             };
             let click = |app: &mut Studio, render: &mut dyn FnMut(&mut Studio, Vec<egui::Event>) -> egui::FullOutput, pos| {
+                render(app, vec![egui::Event::PointerMoved(pos)]);
                 for pressed in [true, false] {
                     render(app, vec![egui::Event::PointerMoved(pos), egui::Event::PointerButton {
                         pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE,
@@ -1970,7 +2008,7 @@ mod tests {
             for (caption, expected) in [("Yes", Some(true)), ("No", Some(false)), ("?", None)] {
                 let output = render(&mut app, vec![]);
                 click(&mut app, &mut render, rule_choice(&output, "Oasis", caption));
-                assert_eq!(app.project.options.oasis, expected);
+                assert_eq!(app.project.options.oasis, expected, "Oasis {caption} in dark={dark}");
                 assert_eq!(app.project.options.landmark_blocker(OASIS).is_some(), expected == Some(false));
             }
             for (caption, excluded) in [("No", Some(true)), ("Yes", Some(false)), ("?", None)] {
@@ -1983,7 +2021,18 @@ mod tests {
                 assert_eq!(options.remove_road_powerlines, excluded);
                 assert_eq!(options.remove_large_powerlines, excluded);
             }
+            for (caption, expected) in [("Yes", Some(true)), ("No", Some(false))] {
+                let output = render(&mut app, vec![]);
+                click(&mut app, &mut render, rule_choice(&output, "Bake cargo route", caption));
+                assert_eq!(app.project.options.cargo_path, expected);
+            }
             let output = render(&mut app, vec![]);
+            let cargo_row = recipe_text(&output, "Bake cargo route").unwrap();
+            assert!(!output.shapes.iter().any(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.job.text == "?" =>
+                    ((text.pos + text.galley.size() * 0.5).y - cargo_row.y).abs() < 2.,
+                _ => false,
+            }));
             for name in ["Rail tunnels", "Road powerlines", "Large powerlines", "Jungle spawns", "Bake cargo route"] {
                 assert!(recipe_text(&output, name).is_some(), "Missing rule {name}");
             }

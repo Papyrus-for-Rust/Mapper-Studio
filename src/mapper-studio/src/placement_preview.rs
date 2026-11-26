@@ -449,6 +449,20 @@ impl Frozen<'_> {
     }
 }
 
+fn landmark_search_samples(project: &Project, frozen: Option<Frozen<'_>>, samples: usize) -> usize {
+    if crate::native_preview::is_native(&project.preview_engine)
+        && project.targets.iter().any(|target| {
+            !frozen.as_ref().is_some_and(|prior| prior.retains(target.instance_id))
+                && project.monument_presence(target) != Presence::Excluded
+                && target.prefab_path.as_deref().is_some_and(|path| project.options.prefers_landmark(path))
+        })
+    {
+        (samples * 2).min(4096)
+    } else {
+        samples
+    }
+}
+
 /// Assess one generation phase while retaining completed preceding phases.
 pub(crate) fn solve_native_phase(
     project: &Project,
@@ -686,7 +700,7 @@ fn solve_native_inner(
         .monument_rules
         .as_ref()
         .is_some_and(|r| r.tier_search.is_some());
-    let samples = coastal_profile.map_or(160, |p| p.candidate_samples);
+    let samples = landmark_search_samples(project, frozen, coastal_profile.map_or(160, |p| p.candidate_samples));
     let mut proposals = std::collections::HashMap::<u64, usize>::new();
     let coastal_proposals = if let Some(policy) = project
         .monument_rules
@@ -1626,6 +1640,7 @@ fn solve_adapted(
         .and_then(|r| r.coastal_profile.as_ref())
         .filter(|_| crate::coastal_placement::supported(&project.placement_engine))
         .map_or(160, |p| p.candidate_samples);
+    let samples = landmark_search_samples(project, frozen, samples);
     let limits = if project
         .monument_rules
         .as_ref()

@@ -391,6 +391,29 @@ impl Source {
             .collect())
     }
 
+    /// Smallest map where the selected installation admits a family variant.
+    pub fn landmark_minimum(
+        &self,
+        catalog: &Catalog,
+        family: crate::recipe_options::Landmark,
+    ) -> Option<u32> {
+        if catalog.sha256 != self.doc.catalog_sha256 {
+            return None;
+        }
+        self.doc.prefab_stage_matches.iter().filter_map(|(path, ids)| {
+            if crate::recipe_options::Landmark::for_path(path) != Some(family) {
+                return None;
+            }
+            let [id] = ids.as_slice() else { return None };
+            let stage = self.doc.stages.iter().find(|stage| stage.object_id == *id)?;
+            if stage.program().disabled || stage.mode & self.policy.realm_mask == 0 || stage.nexus_only {
+                return None;
+            }
+            let bounds = catalog.entries.get(path)?.bounds.as_ref()?;
+            Some(bounds.minimum_world_size.max(stage.minimum_world_size))
+        }).min()
+    }
+
     /// Source stage candidates, before terrain, biome and placement checks.
     /// Zero TargetCount means uncapped, exactly as in PlaceMonuments.Process.
     pub fn population(

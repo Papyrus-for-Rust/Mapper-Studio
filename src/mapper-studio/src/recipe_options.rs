@@ -1,7 +1,7 @@
 //! Portable controls which apply on top of installation defaults.
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Landmark {
     Oasis,
     Lakes,
@@ -81,11 +81,11 @@ pub struct Options {
 
 impl Options {
     #[doc(hidden)]
-    pub fn early_placement_key(&self) -> (bool, bool, bool, bool, bool, Option<u8>, &[String]) {
+    pub fn early_placement_key(&self) -> (Option<bool>, Option<bool>, Option<bool>, bool, bool, Option<u8>, &[String]) {
         (
-            self.oasis.unwrap_or(true),
-            self.lakes.unwrap_or(true),
-            self.canyons.unwrap_or(true),
+            self.oasis,
+            self.lakes,
+            self.canyons,
             self.relax_monument_rules.unwrap_or_default(),
             self.center_outpost.unwrap_or_default(),
             self.island_intensity,
@@ -148,14 +148,21 @@ impl Options {
         Ok(())
     }
 
-    pub fn landmark_blocker(&self, path: &str) -> Option<&'static str> {
-        let family = Landmark::for_path(path)?;
-        let enabled = match family {
+    pub fn landmark_choice(&self, family: Landmark) -> Option<bool> {
+        match family {
             Landmark::Oasis => self.oasis,
             Landmark::Lakes => self.lakes,
             Landmark::Canyons => self.canyons,
-        };
-        (enabled == Some(false)).then_some(family.hint())
+        }
+    }
+
+    pub(crate) fn prefers_landmark(&self, path: &str) -> bool {
+        Landmark::for_path(path).is_some_and(|family| self.landmark_choice(family) == Some(true))
+    }
+
+    pub fn landmark_blocker(&self, path: &str) -> Option<&'static str> {
+        let family = Landmark::for_path(path)?;
+        (self.landmark_choice(family) == Some(false)).then_some(family.hint())
     }
 
     pub fn prefab_blocker(&self, path: &str) -> Option<&'static str> {
