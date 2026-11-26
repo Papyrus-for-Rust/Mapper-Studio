@@ -173,6 +173,48 @@ impl Panel {
         let key=self.artwork_key(path,preferences)?;
         self.texture(ctx,settings,key)
     }
+    pub(super) fn monument_appearance(
+        &mut self,
+        ui: &mut egui::Ui,
+        path: &str,
+        preferences: &mut mapper_studio::preferences::Preferences,
+        settings: Option<&std::path::Path>,
+    ) -> bool {
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            if let Some(id) = self.thumbnail(ui.ctx(), Some(path), preferences, settings) {
+                ui.add(egui::Image::new((id, Vec2::splat(32.))));
+            }
+            let custom = preferences.monument_icons.contains_key(path);
+            if ui.add_enabled(settings.is_some() && (custom || preferences.monument_icons.len() < 256),
+                egui::Button::new("Choose icon…")).clicked()
+                && let Some(file) = rfd::FileDialog::new().add_filter("PNG icon", &["png"]).pick_file()
+            {
+                let result = settings.ok_or("Settings storage unavailable".into())
+                    .and_then(monument_icons::directory)
+                    .and_then(|folder| monument_icons::import(&folder, &file));
+                match result {
+                    Ok(hash) => {
+                        self.textures.remove(&hash);
+                        preferences.monument_icons.insert(path.into(), hash);
+                        self.message.clear();
+                        changed = true;
+                    }
+                    Err(error) => self.message = error,
+                }
+            }
+            if ui.add_enabled(custom, egui::Button::new("Restore default")).clicked() {
+                preferences.monument_icons.remove(path);
+                self.message.clear();
+                changed = true;
+            }
+        });
+        if !self.message.is_empty() {
+            ui.colored_label(ui.visuals().error_fg_color, &self.message);
+        }
+        changed
+    }
+
     pub fn settings(&mut self,ui:&mut egui::Ui,project:&Project,catalog:Option<&Catalog>,preferences:&mut mapper_studio::preferences::Preferences,settings:Option<&std::path::Path>)->bool {
         let mut changed=false;
         self.textures.retain(|hash,_|preferences.monument_icons.values().any(|v|v==hash));

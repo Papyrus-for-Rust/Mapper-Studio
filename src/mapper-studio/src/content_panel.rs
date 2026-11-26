@@ -106,6 +106,7 @@ struct MonumentSettings {
     loaded_anchor: Option<u32>,
     versions: Vec<monument_addons::Version>,
     preview: Option<monument_addons::AddOn>,
+    layout_choice: Option<Option<String>>,
     message: String,
 }
 
@@ -521,7 +522,7 @@ mod tests {
         click(&mut panel, &mut project, "Loading versions…");
         click(&mut panel, &mut project, "Stock monument");
         sender.send(Ok(LayoutResult::Versions(Vec::new()))).unwrap();
-        render(&mut panel, &mut project, vec![]);
+        click(&mut panel, &mut project, "Apply to recipe");
         assert!(project.monument_overlay_choices.is_empty());
         assert_eq!(panel.monument_settings_recipe(), Some(crate::FIRST_RECIPE));
     }
@@ -543,6 +544,7 @@ impl ContentPanel {
             loaded_anchor: None,
             versions: Vec::new(),
             preview: None,
+            layout_choice: None,
             message: String::new(),
         });
     }
@@ -555,12 +557,34 @@ impl ContentPanel {
         }
     }
 
-    pub(super) fn show_monument_settings(
+    pub(super) fn stock_monument(&self) -> Option<(&str, &str)> {
+        self.monument_settings.as_ref().map(|item| (item.path.as_str(), item.name.as_str()))
+    }
+
+    pub(super) fn close_monument_settings(&mut self) {
+        self.monument_settings = None;
+    }
+
+    #[cfg(test)]
+    fn show_monument_settings(
         &mut self,
         ctx: &egui::Context,
         project: &mut Project,
         identities: Option<Arc<mapper_studio::client_preparation::ReadyIdentities>>,
     ) {
+        egui::Window::new("Monument Settings").show(ctx, |ui| {
+            self.monument_layout(ui, project, identities, true);
+        });
+    }
+
+    pub(super) fn monument_layout(
+        &mut self,
+        ui: &mut egui::Ui,
+        project: &mut Project,
+        identities: Option<Arc<mapper_studio::client_preparation::ReadyIdentities>>,
+        editable: bool,
+    ) {
+        let ctx = ui.ctx().clone();
         let Some(settings) = self.monument_settings.as_mut() else { return; };
         if settings.installation != project.installation {
             self.monument_settings = None;
@@ -572,11 +596,12 @@ impl ContentPanel {
             settings.loaded_anchor = anchor;
             settings.versions.clear();
             settings.preview = None;
+            settings.layout_choice = None;
             settings.task = None;
             if let Some(anchor) = anchor {
                 let embedded: Vec<_> = project.monument_addons.iter()
                     .filter(|addon| addon.anchor_id == anchor).cloned().collect();
-                match OverlayTask::start(ctx, false, move |signal| {
+                match OverlayTask::start(&ctx, false, move |signal| {
                     let library = monument_addons::Library::local()?;
                     let cancelled = || signal.load(Ordering::Relaxed);
                     for addon in &embedded {
@@ -612,136 +637,138 @@ impl ContentPanel {
                 }
             }
         }
-        let mut open = true;
-        egui::Window::new(&settings.name)
-            .id(egui::Id::new("monument-settings"))
-            .collapsible(false)
-            .default_width(360.)
-            .open(&mut open)
-            .show(ctx, |ui| {
-                let layout_label = ui.strong("Layout");
-                if let Some(anchor) = anchor {
-                    let current = project.monument_overlay_choices.get(&anchor).map(String::as_str);
-                    let embedded = project.monument_addons.iter().any(|addon| addon.anchor_id == anchor);
-                    let mut chosen = current;
-                    let version_label = |index: usize| {
-                        let version = &settings.versions[index];
-                        let duplicate = (index > 0 && settings.versions[index - 1].name == version.name)
-                            || settings.versions.get(index + 1).is_some_and(|next| next.name == version.name);
-                        if duplicate { format!("{} · {}", version.name, &version.key[..8]) }
-                        else { version.name.clone() }
-                    };
-                    let label = match current {
-                        Some(key) => settings.versions.iter().position(|version| version.key == key)
-                            .map_or_else(|| {
-                                if settings.task.as_ref().is_some_and(|task| !task.importing) {
-                                    "Loading versions…".into()
-                                } else {
-                                    "Missing library version".into()
-                                }
-                            }, version_label),
-                        None if embedded => "Embedded layouts".into(),
-                        None => "Stock monument".into(),
-                    };
-                    let mut selected = false;
-                    egui::ComboBox::from_id_salt(("overlay-version", anchor))
-                        .selected_text(label).truncate().width(ui.available_width()).show_ui(ui, |ui| {
-                        if ui.add_enabled(!embedded || settings.task.is_none(),
-                            egui::Button::selectable(current.is_none() && !embedded, "Stock monument")).clicked() {
-                            chosen = None;
-                            selected = true;
-                        }
-                        for (index, version) in settings.versions.iter().enumerate() {
-                            if ui.selectable_label(current == Some(&version.key), version_label(index))
-                                .on_hover_text(format!("{} objects", version.objects)).clicked() {
-                                chosen = Some(&version.key);
-                                selected = true;
-                            }
-                        }
-                    }).response.labelled_by(layout_label.id)
-                        .on_hover_text("This recipe applies the selected layout to every placement of this monument.");
-                    if selected && (chosen != current || embedded) {
-                        let chosen = chosen.map(str::to_owned);
-                        let result = (|| {
-                            if let Some(key) = &chosen {
-                                let addon = monument_addons::Library::local()?.load(anchor, key)?;
-                                identities.as_ref().ok_or("Prepare this monument’s Rust installation first.")?
-                                    .addons.check(std::slice::from_ref(&addon))?;
-                            }
-                            if embedded {
-                                let library = monument_addons::Library::local()?;
-                                library.save_embedded(project, anchor)?;
-                            }
-                            project.choose_monument_overlay(anchor, chosen)
-                        })();
-                        settings.message = result.err().unwrap_or_default();
-                    }
-                }
-                ui.horizontal(|ui| {
-                    let add = ui.add_enabled(available_anchor.is_some() && settings.task.is_none(), egui::Button::new("Import layout…"))
-                        .on_hover_text("Choose a RustEdit .map with one copy of this stock monument and the objects to attach. The source terrain stays behind. Mapper layout packages also work.")
-                        .on_disabled_hover_text(if available_anchor.is_none() {
-                            "Prepare this monument’s Rust installation first."
+        let layout_label = ui.strong("Layout");
+        if let Some(anchor) = anchor {
+            let current = project.monument_overlay_choices.get(&anchor).map(String::as_str);
+            let embedded = project.monument_addons.iter().any(|addon| addon.anchor_id == anchor);
+            let mut chosen = settings.layout_choice.as_ref().map_or(current, |value| value.as_deref());
+            let displayed = chosen;
+            let version_label = |index: usize| {
+                let version = &settings.versions[index];
+                let duplicate = (index > 0 && settings.versions[index - 1].name == version.name)
+                    || settings.versions.get(index + 1).is_some_and(|next| next.name == version.name);
+                if duplicate { format!("{} · {}", version.name, &version.key[..8]) }
+                else { version.name.clone() }
+            };
+            let label = match displayed {
+                Some(key) => settings.versions.iter().position(|version| version.key == key)
+                    .map_or_else(|| {
+                        if settings.task.as_ref().is_some_and(|task| !task.importing) {
+                            "Loading versions…".into()
                         } else {
-                            "The layout library is busy."
-                        });
-                    if add.clicked()
-                        && let Some(path) = rfd::FileDialog::new()
-                            .add_filter("RustEdit layout map", &["map"])
-                            .add_filter("Mapper layout package", &["mapperasset"])
-                            .pick_file()
-                        && let (Some(anchor), Some(ids)) = (available_anchor, identities.as_ref())
-                    {
-                        settings.message.clear();
-                        settings.preview = None;
-                        let ids = Arc::clone(ids);
-                        match OverlayTask::start(ctx, true, move |signal| {
-                            let cancelled = || signal.load(Ordering::Relaxed);
-                            let item = Imported::read_file(&path, cancelled)?;
-                            let addon = monument_addons::import_for_anchor(&item, anchor)?;
-                            ids.addons.check(std::slice::from_ref(&addon))?;
-                            Ok(LayoutResult::Preview(addon))
-                        }) {
-                            Ok(task) => settings.task = Some(task),
-                            Err(error) => settings.message = error,
+                            "Missing library version".into()
                         }
-                    }
-                    if let Some(task) = &settings.task {
-                        ui.spinner();
-                        if task.importing {
-                            if ui.button("Cancel import").clicked() {
-                                settings.task = None;
-                                settings.loaded_anchor = None;
-                            }
-                        } else if anchor.is_none_or(|anchor| !project.monument_overlay_choices.contains_key(&anchor)) {
-                            ui.weak("Loading versions…");
-                        }
-                    }
-                });
-                if let Some(preview) = &settings.preview {
-                    ui.separator();
-                    preview_layout(ui, preview);
-                    let discard = ui.horizontal(|ui| {
-                        let idle = settings.task.is_none();
-                        let save = ui.add_enabled(idle && available_anchor == Some(preview.anchor_id),
-                            egui::Button::new("Save layout")).clicked();
-                        let clear = ui.add_enabled(idle, egui::Button::new("Discard preview")).clicked();
-                        if save {
-                            let addon = preview.clone();
-                            settings.message.clear();
-                            match OverlayTask::start(ctx, true, move |signal| save_layout(&addon, signal)) {
-                                Ok(task) => settings.task = Some(task),
-                                Err(error) => settings.message = error,
-                            }
-                        }
-                        !save && clear
-                    }).inner;
-                    if discard {
-                        settings.preview = None;
+                    }, version_label),
+                None if embedded && settings.layout_choice.is_none() => "Embedded layouts".into(),
+                None => "Stock monument".into(),
+            };
+            let mut selected = false;
+            egui::ComboBox::from_id_salt(("overlay-version", anchor))
+                .selected_text(label).truncate().width(ui.available_width()).show_ui(ui, |ui| {
+                if ui.add_enabled(!embedded || settings.task.is_none(),
+                    egui::Button::selectable(displayed.is_none() && (!embedded || settings.layout_choice.is_some()), "Stock monument")).clicked() {
+                    chosen = None;
+                    selected = true;
+                }
+                for (index, version) in settings.versions.iter().enumerate() {
+                    if ui.selectable_label(displayed == Some(&version.key), version_label(index))
+                        .on_hover_text(format!("{} objects", version.objects)).clicked() {
+                        chosen = Some(&version.key);
+                        selected = true;
                     }
                 }
-                if !settings.message.is_empty() { ui.label(&settings.message); }
-            });
-        if !open { self.monument_settings = None; }
+            }).response.labelled_by(layout_label.id)
+                .on_hover_text("This recipe applies the selected layout to every placement of this monument.");
+            if selected {
+                settings.layout_choice = (chosen != current || embedded).then(|| chosen.map(str::to_owned));
+            }
+            if let Some(chosen) = settings.layout_choice.clone()
+                && ui.add_enabled(editable && settings.task.is_none(), egui::Button::new("Apply to recipe")).clicked()
+            {
+                let result = (|| {
+                    if let Some(key) = &chosen {
+                        let addon = monument_addons::Library::local()?.load(anchor, key)?;
+                        identities.as_ref().ok_or("Prepare this monument’s Rust installation first.")?
+                            .addons.check(std::slice::from_ref(&addon))?;
+                    }
+                    if embedded {
+                        let library = monument_addons::Library::local()?;
+                        library.save_embedded(project, anchor)?;
+                    }
+                    project.choose_monument_overlay(anchor, chosen)
+                })();
+                match result {
+                    Ok(()) => {
+                        settings.layout_choice = None;
+                        settings.message = "Layout applied to the recipe.".into();
+                    }
+                    Err(error) => settings.message = error,
+                }
+            }
+        }
+        ui.horizontal(|ui| {
+            let add = ui.add_enabled(available_anchor.is_some() && settings.task.is_none(), egui::Button::new("Import layout…"))
+                .on_hover_text("Choose a RustEdit .map with one copy of this stock monument and the objects to attach. The source terrain stays behind. Mapper layout packages also work.")
+                .on_disabled_hover_text(if available_anchor.is_none() {
+                    "Prepare this monument’s Rust installation first."
+                } else {
+                    "The layout library is busy."
+                });
+            if add.clicked()
+                && let Some(path) = rfd::FileDialog::new()
+                    .add_filter("RustEdit layout map", &["map"])
+                    .add_filter("Mapper layout package", &["mapperasset"])
+                    .pick_file()
+                && let (Some(anchor), Some(ids)) = (available_anchor, identities.as_ref())
+            {
+                settings.message.clear();
+                settings.preview = None;
+                let ids = Arc::clone(ids);
+                match OverlayTask::start(&ctx, true, move |signal| {
+                    let cancelled = || signal.load(Ordering::Relaxed);
+                    let item = Imported::read_file(&path, cancelled)?;
+                    let addon = monument_addons::import_for_anchor(&item, anchor)?;
+                    ids.addons.check(std::slice::from_ref(&addon))?;
+                    Ok(LayoutResult::Preview(addon))
+                }) {
+                    Ok(task) => settings.task = Some(task),
+                    Err(error) => settings.message = error,
+                }
+            }
+            if let Some(task) = &settings.task {
+                ui.spinner();
+                if task.importing {
+                    if ui.button("Cancel import").clicked() {
+                        settings.task = None;
+                        settings.loaded_anchor = None;
+                    }
+                } else if anchor.is_none_or(|anchor| !project.monument_overlay_choices.contains_key(&anchor)) {
+                    ui.weak("Loading versions…");
+                }
+            }
+        });
+        if let Some(preview) = &settings.preview {
+            ui.separator();
+            preview_layout(ui, preview);
+            let discard = ui.horizontal(|ui| {
+                let idle = settings.task.is_none();
+                let save = ui.add_enabled(idle && available_anchor == Some(preview.anchor_id),
+                    egui::Button::new("Save layout")).clicked();
+                let clear = ui.add_enabled(idle, egui::Button::new("Discard preview")).clicked();
+                if save {
+                    let addon = preview.clone();
+                    settings.message.clear();
+                    match OverlayTask::start(&ctx, true, move |signal| save_layout(&addon, signal)) {
+                        Ok(task) => settings.task = Some(task),
+                        Err(error) => settings.message = error,
+                    }
+                }
+                !save && clear
+            }).inner;
+            if discard {
+                settings.preview = None;
+            }
+        }
+        if !settings.message.is_empty() { ui.label(&settings.message); }
     }
 }

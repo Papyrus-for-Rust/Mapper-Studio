@@ -1,4 +1,4 @@
-//! Shared chrome for Mapper's two settings dialogs.
+//! Shared chrome for Mapper's settings dialogs.
 use super::workbench_style;
 use eframe::egui::{
     self, Align, Color32, FontId, Layout, Rect, RichText, Sense, Stroke, Vec2, pos2, vec2,
@@ -34,10 +34,21 @@ pub(super) fn show<Page: Copy + Eq + std::hash::Hash + std::fmt::Debug>(
     title: &str,
     pages: impl IntoIterator<Item = (Page, &'static str, Icon)>,
     mut selected: Page,
+    resizable: bool,
     body: impl FnOnce(&mut egui::Ui, Page),
 ) -> (Page, bool) {
     let available = ctx.content_rect().size();
-    let size = (available - Vec2::splat(36.)).clamp(Vec2::splat(1.), vec2(1000., 712.));
+    let available_size = (available - Vec2::splat(36.)).max(Vec2::splat(1.));
+    let default_size = available_size.min(vec2(1000., 712.));
+    let minimum_size = available_size.min(vec2(630., 450.));
+    let size_id = egui::Id::new((id, "size"));
+    let size = if resizable {
+        ctx.data(|data| data.get_temp::<Vec2>(size_id))
+            .unwrap_or(default_size)
+            .clamp(minimum_size, available_size)
+    } else {
+        default_size
+    };
     let compact = size.x < 730.;
     let sidebar = (if compact { 182_f32 } else { 224. }).min(size.x * 0.39);
     let header = if compact { 44. } else { 56. };
@@ -176,6 +187,37 @@ pub(super) fn show<Page: Copy + Eq + std::hash::Hash + std::fmt::Debug>(
                 .fill(workbench_style::PRIMARY_ACTION)
                 .corner_radius(8),
         );
+        if resizable {
+            let grip = Rect::from_min_size(rect.right_bottom() - Vec2::splat(18.), Vec2::splat(18.));
+            let resize = ui.interact(grip, size_id.with("drag"), Sense::drag())
+                .on_hover_cursor(egui::CursorIcon::ResizeNwSe)
+                .on_hover_text("Resize window");
+            let tip = grip.right_bottom() - Vec2::splat(4.);
+            for offset in [5., 9.] {
+                ui.painter().line_segment(
+                    [tip - vec2(offset, 0.), tip - vec2(0., offset)],
+                    egui::Stroke::new(1., visuals.weak_text_color()),
+                );
+            }
+            let drag_start = size_id.with("drag-start");
+            if resize.is_pointer_button_down_on()
+                && let Some(origin) = ctx.input(|input| input.pointer.press_origin())
+                && ctx.data(|data| data.get_temp::<(Vec2, egui::Pos2)>(drag_start)).is_none()
+            {
+                ctx.data_mut(|data| data.insert_temp(drag_start, (size, origin)));
+            }
+            if (resize.dragged() || resize.drag_stopped())
+                && let Some((start, origin)) = ctx.data(|data| data.get_temp::<(Vec2, egui::Pos2)>(drag_start))
+                && let Some(pointer) = ctx.input(|input| input.pointer.latest_pos())
+            {
+                let next = (start + 2. * (pointer - origin)).clamp(minimum_size, available_size);
+                ctx.data_mut(|data| data.insert_temp(size_id, next));
+                ctx.request_repaint();
+            }
+            if !resize.is_pointer_button_down_on() {
+                ctx.data_mut(|data| data.remove::<(Vec2, egui::Pos2)>(drag_start));
+            }
+        }
         close.clicked() || done.clicked()
     });
     let escape = modal.is_top_modal

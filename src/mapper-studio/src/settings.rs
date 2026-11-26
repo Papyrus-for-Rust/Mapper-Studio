@@ -235,7 +235,7 @@ impl Studio {
             (Page::Support, "Support", Icon::Rules),
         ];
         let (page, closed) = settings_dialog::show(
-            ctx, "mapper-settings", "Settings", pages, self.settings_page, |ui, page| {
+            ctx, "mapper-settings", "Settings", pages, self.settings_page, false, |ui, page| {
                 if let Some((_, label, _)) = pages.iter().find(|(key, _, _)| *key == page) {
                     ui.heading(*label);
                     ui.add_space(4.);

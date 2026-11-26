@@ -1738,6 +1738,8 @@ impl Studio {
                         let path = identities.as_ref().and_then(|ids| ids.prefab_path(*anchor))
                             .unwrap_or_default().to_owned();
                         let name = studio.monument_icons.name(Some(&path), "Monument layout");
+                        studio.custom_monuments.close();
+                        studio.monument_dialog.page = super::monument_dialog::Page::Layouts;
                         studio.content.open_overlay_recovery(recipe, studio.recipe_tabs.editor(), *anchor, path, name, message.clone());
                     });
                 }
@@ -3247,6 +3249,9 @@ impl Studio {
         for (index, monument) in result.monuments.iter().enumerate() {
             if edit.monuments.excluded(index) { continue; }
             let moved = edit.poses.get(&index).copied();
+            let path = monument.prefab.as_deref();
+            if moved.is_none() && self.preferences.monument_marker_hidden(path) { continue; }
+            let display_name = self.preferences.monument_label(path, &monument.name);
             let point = marker_position(index, monument);
             if markers != mapper_studio::map_labels::Mode::Text
                 && !outer.expand(monument_icon_panel::ICON_SIDE).contains(point) { continue; }
@@ -3255,7 +3260,7 @@ impl Studio {
             if hidden_text && moved.is_none() { continue; }
             if markers == mapper_studio::map_labels::Mode::Text && !hidden_text
                 && !self.monument_icons.labels
-                    .bounds(ui.ctx(), result.map_font.as_ref(), &monument.name)
+                    .bounds(ui.ctx(), result.map_font.as_ref(), display_name)
                     .translate(point.to_vec2()).intersects(outer)
             {
                 continue;
@@ -3265,7 +3270,7 @@ impl Studio {
                 if hidden_text || markers == mapper_studio::map_labels::Mode::None
                     || !self.monument_icons.paint(&painter, point, monument.prefab.as_deref(),
                         &self.preferences, self.settings_path.as_deref(),
-                        map_label_panel::Text { name: &monument.name, source: result.map_font.as_ref() })
+                        map_label_panel::Text { name: display_name, source: result.map_font.as_ref() })
                 {
                     painter.circle_filled(point, monument_icon_panel::PLACED_RADIUS, if moved.is_some() {
                         Color32::from_rgb(255, 213, 138)
@@ -3285,10 +3290,11 @@ impl Studio {
             }
         }
         if let Some((_, point, monument, moved)) = hovered {
+            let name = self.preferences.monument_label(monument.prefab.as_deref(), &monument.name);
             let label = if moved {
-                Cow::Owned(format!("{} · Move preview", monument.name))
+                Cow::Owned(format!("{name} · Move preview"))
             } else {
-                Cow::Borrowed(monument.name.as_str())
+                Cow::Borrowed(name)
             };
             marker_label(&painter, outer, point, &label);
         } else if result.grid && edit.drag.is_none() && !edit.paths.dragging()

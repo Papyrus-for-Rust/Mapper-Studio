@@ -60,7 +60,7 @@ pub fn add_placement(project: &mut Project, placement: Placement) -> Result<(), 
     Ok(())
 }
 
-pub(crate) fn validate(project: &Project) -> Result<(), String> {
+pub fn validate(project: &Project) -> Result<(), String> {
     if project.custom_monuments.is_empty() {
         return Ok(());
     }

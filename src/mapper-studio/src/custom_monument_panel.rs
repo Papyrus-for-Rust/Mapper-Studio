@@ -20,6 +20,8 @@ pub(super) struct Panel {
     draft: Option<Draft>,
     notice: Option<Result<(), String>>,
     library: Vec<LibraryEntry>,
+    library_requested: bool,
+    placement_drafts: Vec<(usize, Placement)>,
     position: [f32; 3],
     yaw: f32,
 }
@@ -69,10 +71,7 @@ impl Panel {
     pub(super) fn open(&mut self, ctx: &egui::Context) {
         if !self.open {
             self.open = true;
-            self.start(ctx, "Reading library…", |stop| {
-                rustedit_prefab::library_entries(|| stop.load(Ordering::Relaxed))
-                    .map(Finished::Library)
-            });
+            self.refresh_library(ctx);
         }
     }
 
@@ -108,10 +107,140 @@ impl Panel {
         self.open
     }
 
-    pub(super) fn show(&mut self, ctx: &egui::Context, recipe: &mut Project, editable: bool) {
-        if !self.open {
+    pub(super) fn close(&mut self) {
+        self.open = false;
+        if self.task.as_ref().is_some_and(|task| task.activity == "Reading library…") {
+            self.library_requested = false;
+        }
+        self.task = None;
+        self.placement_drafts.clear();
+        self.draft = None;
+        self.notice = None;
+    }
+
+    pub(super) fn name(&self) -> &str {
+        self.draft.as_ref().map_or("New custom monument", |draft| draft.name.as_str())
+    }
+
+    pub(super) fn entries(&self) -> &[LibraryEntry] {
+        &self.library
+    }
+
+    pub(super) fn refresh_library(&mut self, ctx: &egui::Context) {
+        if self.task.is_none() && !self.library_requested {
+            self.library_requested = true;
+            self.start(ctx, "Reading library…", |stop| {
+                rustedit_prefab::library_entries(|| stop.load(Ordering::Relaxed)).map(Finished::Library)
+            });
+        }
+    }
+
+    pub(super) fn select(&mut self, ctx: &egui::Context, entry: LibraryEntry) {
+        self.open = true;
+        self.request(ctx, Selected::Library(entry));
+    }
+
+    fn request(&mut self, ctx: &egui::Context, selection: Selected) {
+        self.draft = None;
+        self.placement_drafts.clear();
+        self.position = [0.; 3];
+        self.yaw = 0.;
+        self.start(ctx, "Preparing stamp preview…", move |stop| {
+            let cancelled = || stop.load(Ordering::Relaxed);
+            let preview = match selection {
+                Selected::File(path) => Preview::read(path, cancelled)?,
+                Selected::Library(entry) => {
+                    let (source, splats) = entry.read_for_preview(cancelled)?;
+                    let mut preview = Preview::new(entry.name.clone(), source, splats);
+                    preview.saved = Some(entry);
+                    preview
+                }
+            };
+            Ok(Finished::Imported(preview))
+        });
+    }
+
+    pub(super) fn overview(&self, ui: &mut egui::Ui) {
+        if let Some(draft) = &self.draft {
+            ui.label(format!("{} placed prefabs", draft.source.prefab.prefabs.len()));
+            ui.label(format!("{} terrain images", draft.source.terrain.len()));
+            if let Some(issue) = &draft.placement_issue {
+                ui.colored_label(ui.visuals().warn_fg_color, issue);
+            }
+            let size = draft.footprint.size_vec2();
+            let scale = (ui.available_width() / size.x).min(1.);
+            ui.add(egui::Image::new((draft.footprint.id(), size * scale)));
+        } else {
+            ui.weak("Choose a monument file in Source to see its footprint.");
+        }
+    }
+
+    pub(super) fn generation(&mut self, ui: &mut egui::Ui, recipe: &mut Project, editable: bool) {
+        let Some(version) = self.draft.as_ref().and_then(|draft| draft.saved.as_ref()).map(|entry| entry.version.as_str()) else {
+            ui.weak("Save the monument in Source before adding it to a recipe.");
+            return;
+        };
+        let existing: Vec<_> = recipe.custom_monuments.iter().enumerate()
+            .filter_map(|(index, placement)| (placement.version == version).then_some(index)).collect();
+        if existing.is_empty() {
+            ui.weak("Add a placement from Source to edit its policy here.");
             return;
         }
+        if self.placement_drafts.iter().map(|(index, _)| index).ne(existing.iter()) {
+            self.placement_drafts = existing.iter().map(|&index| (index, recipe.custom_monuments[index].clone())).collect();
+        }
+        let mut remove = None;
+        ui.add_enabled_ui(editable, |ui| {
+            for (index, placement) in &mut self.placement_drafts {
+                ui.push_id(*index, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(format!("Placement {}", *index + 1));
+                        if let Some(presence) = super::outliner::presence_buttons(ui, placement.presence, None) {
+                            placement.presence = presence;
+                        }
+                        if ui.button("Remove").clicked() { remove = Some(*index); }
+                    });
+                    placement_fields(ui, recipe.size, &mut placement.position, &mut placement.yaw);
+                    ui.separator();
+                });
+            }
+            let changed = self.placement_drafts.iter()
+                .any(|(index, draft)| draft != &recipe.custom_monuments[*index]);
+            if ui.add_enabled(changed, egui::Button::new("Apply to recipe")).clicked() {
+                let mut candidate = recipe.clone();
+                for (index, draft) in &self.placement_drafts {
+                    candidate.custom_monuments[*index] = draft.clone();
+                }
+                let result = custom_monuments::validate(&candidate).and_then(|()| {
+                    let placements = &candidate.custom_monuments;
+                    if placements.iter().enumerate().any(|(index, item)| placements[..index].iter().any(|other| {
+                        other.version == item.version && other.baked == item.baked
+                            && other.position == item.position && other.yaw == item.yaw
+                    })) {
+                        Err("Two placements of the same monument use the same position and rotation.".into())
+                    } else {
+                        Ok(())
+                    }
+                });
+                match result {
+                    Ok(()) => {
+                        recipe.custom_monuments = candidate.custom_monuments;
+                        self.notice = None;
+                    }
+                    Err(error) => self.notice = Some(Err(error)),
+                }
+            }
+        });
+        if let Some(index) = remove {
+            recipe.custom_monuments.remove(index);
+            self.placement_drafts.clear();
+        }
+        if let Some(Err(error)) = &self.notice {
+            ui.colored_label(ui.visuals().error_fg_color, error);
+        }
+    }
+
+    pub(super) fn poll(&mut self, ctx: &egui::Context) {
         if let Some(task) = &self.task {
             let result = match task.receiver.try_recv() {
                 Ok(result) => Some(result),
@@ -142,7 +271,9 @@ impl Panel {
                             placement_issue,
                         });
                     }
-                    Ok(Finished::Library(entries)) => self.library = entries,
+                    Ok(Finished::Library(entries)) => {
+                        self.library = entries;
+                    }
                     Ok(Finished::Saved(entry)) => {
                         if let Some(draft) = &mut self.draft {
                             draft.saved = Some(entry.clone());
@@ -156,179 +287,147 @@ impl Panel {
                 }
             }
         }
-        let mut open = self.open;
-        egui::Window::new("Custom monuments")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(true)
-            .vscroll(true)
-            .default_width(420.)
-            .default_height((ctx.content_rect().height() - 70.).max(240.))
-            .frame(super::settings_dialog::workbench_dialog_frame(ctx, 14.))
-            .show(ctx, |ui| {
-                let mut selected = None;
-                ui.add_enabled_ui(self.task.is_none(), |ui| {
-                    ui.horizontal(|ui| {
-                        if ui.button("Choose prefab…")
-                            .on_hover_text("RustEdit 1 .prefab. Keep the terrain files next to it.")
-                            .clicked()
-                            && let Some(path) = rfd::FileDialog::new().add_filter("RustEdit 1 prefab", &["prefab"]).pick_file()
-                        {
-                            selected = Some(Selected::File(path));
-                        }
-                        if !self.library.is_empty() {
-                            egui::ComboBox::from_id_salt("custom-monument-library")
-                                .selected_text("Library")
-                                .width(88.)
-                                .show_ui(ui, |ui| {
-                                    for (index, entry) in self.library.iter().enumerate() {
-                                        let duplicate = (index > 0 && self.library[index - 1].name == entry.name)
-                                            || self.library.get(index + 1).is_some_and(|next| next.name == entry.name);
-                                        let label = if duplicate {
-                                            format!("{} · {}", entry.name, &entry.version.as_str()[..8])
-                                        } else {
-                                            entry.name.clone()
-                                        };
-                                        if ui.selectable_label(false, label).clicked() {
-                                            selected = Some(Selected::Library(entry.clone()));
-                                        }
-                                    }
-                                });
-                        }
-                    });
-                });
-                if let Some(selection) = selected {
-                    self.start(ctx, "Preparing stamp preview…", move |stop| {
-                        let cancelled = || stop.load(Ordering::Relaxed);
-                        let preview = match selection {
-                            Selected::File(path) => Preview::read(path, cancelled)?,
-                            Selected::Library(entry) => {
-                                let (source, splats) = entry.read_for_preview(cancelled)?;
-                                let mut preview = Preview::new(entry.name.clone(), source, splats);
-                                preview.saved = Some(entry);
-                                preview
-                            }
-                        };
-                        Ok(Finished::Imported(preview))
-                    });
-                }
+    }
 
-                let mut save = None;
-                if let Some(draft) = &mut self.draft {
-                    ui.add_space(4.);
-                    ui.horizontal(|ui| {
-                        let label = ui.label("Name");
-                        ui.add_enabled(self.task.is_none(),
-                            egui::TextEdit::singleline(&mut draft.name).desired_width(208.)
-                        ).labelled_by(label.id);
-                    });
-                    let parts = draft.source.prefab.prefabs.len();
-                    let images = draft.source.terrain.len();
-                    let mut summary = if parts == 1 { "1 prefab".to_owned() } else { format!("{parts} prefabs") };
-                    if images > 0 { summary.push_str(&format!(" · {images} terrain {}", if images == 1 { "image" } else { "images" })); }
-                    ui.weak(summary);
-                    if let Some(entry) = draft.saved.as_ref().filter(|entry| entry.name == draft.name.trim()) {
-                        if let Some(message) = &draft.placement_issue {
-                            ui.weak("Preview only").on_hover_text(message);
-                        } else {
-                            let blocked = if !editable { Some("Finish the current edit first.") }
-                                else if !recipe.performance.monuments { Some("Enable Monuments in Recipe.") }
-                                else if recipe.installation.is_none() || !mapper_studio::native_preview::is_native(&recipe.preview_engine)
-                                    { Some("Choose a Rust installation first.") }
-                                else { None };
-                            ui.add_enabled_ui(blocked.is_none() && self.task.is_none(), |ui| {
-                                placement_fields(ui, recipe.size, &mut self.position, &mut self.yaw);
-                                if ui.add(egui::Button::new(egui::RichText::new("Add to recipe").color(egui::Color32::WHITE))
-                                    .fill(super::workbench_style::PRIMARY_ACTION)).clicked() {
-                                    let placement = Placement {
-                                        version: entry.version.as_str().to_owned(),
-                                        position: self.position,
-                                        yaw: self.yaw,
-                                        name: entry.name.clone(),
-                                        presence: mapper_studio::Presence::Required,
-                                        baked: false,
-                                    };
-                                    self.notice = custom_monuments::add_placement(recipe, placement).err().map(Err);
-                                }
-                            }).response.on_disabled_hover_text(blocked.unwrap_or("Wait for the current operation."));
-                        }
-                    } else if ui.add_enabled(self.task.is_none() && !draft.name.trim().is_empty(),
-                        egui::Button::new(egui::RichText::new("Save to library").color(egui::Color32::WHITE))
-                            .fill(super::workbench_style::PRIMARY_ACTION)).clicked() {
-                            save = Some((draft.source.clone(), draft.name.clone()));
-                    }
-                } else if self.task.is_none() {
-                    ui.weak("Select a RustEdit 1 .prefab to preview its footprint and splat mask.");
-                }
-                if let Some((source, name)) = save {
-                    self.start(ctx, "Saving monument…", move |stop| {
-                        source.save_to_library(&name, || stop.load(Ordering::Relaxed)).map(Finished::Saved)
-                    });
-                }
-                if !recipe.custom_monuments.is_empty() {
-                    ui.collapsing(format!("In recipe ({})", recipe.custom_monuments.len()), |ui| {
-                        egui::ScrollArea::vertical().max_height(110.).show(ui, |ui| {
-                            let mut remove = None;
-                            for (index, placement) in recipe.custom_monuments.iter().enumerate() {
-                                let name = self.library.iter().find(|entry| entry.version.as_str() == placement.version)
-                                    .map_or_else(|| placement.version.get(..8).unwrap_or(&placement.version), |entry| entry.name.as_str());
-                                ui.push_id(index, |ui| {
-                                    ui.horizontal(|ui| {
-                                        let title = format!("{name} · {:.0}, {:.0}, {:.0}", placement.position[0], placement.position[1], placement.position[2]);
-                                        if ui.add_enabled(editable, egui::Button::new("Remove")).clicked() { remove = Some(index); }
-                                        ui.add(egui::Label::new(&title).truncate()).on_hover_text(format!("{title} m · {:.1}°", placement.yaw));
-                                    });
-                                });
-                            }
-                            if let Some(index) = remove {
-                                recipe.custom_monuments.remove(index);
-                            }
-                        });
-                    });
-                }
-                if let Some(draft) = &mut self.draft {
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        ui.selectable_value(&mut draft.show_splat, false, "Prefab footprint")
-                            .on_hover_text("Prefab origins viewed from above. The cross marks the source origin.");
-                        if draft.splat.is_some() {
-                            ui.selectable_value(&mut draft.show_splat, true, "Splat mask")
-                                .on_hover_text("Material weights shown in preview colors.");
-                        }
-                    });
-                    let texture = if draft.show_splat {
-                        draft.splat.as_ref().unwrap_or(&draft.footprint)
-                    } else {
-                        &draft.footprint
-                    };
-                    let size = texture.size_vec2();
-                    let controls_height = if draft.saved.is_some() { 365. } else { 265. };
-                    let preview_height = (ctx.content_rect().height() - controls_height).clamp(90., 320.);
-                    let scale = ((ui.available_width() - 16.).clamp(1., 420.) / size.x).min(preview_height / size.y);
-                    egui::Frame::new().fill(ui.visuals().extreme_bg_color).corner_radius(8)
-                        .inner_margin(egui::Margin::same(8)).show(ui, |ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.add(egui::Image::new((texture.id(), size * scale)));
-                            });
-                        });
-                }
-                if let Some(task) = &self.task {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label(task.activity);
-                    });
-                }
-                match &self.notice {
-                    Some(Ok(())) => { ui.weak("Saved to the custom monument library."); }
-                    Some(Err(error)) => {
-                        ui.colored_label(ui.visuals().error_fg_color, error);
-                        crate::diagnostic_ui::copy_error(ui, error, None);
-                    }
-                    None => {}
+    #[cfg(test)]
+    fn show(&mut self, ctx: &egui::Context, recipe: &mut Project, editable: bool) {
+        self.poll(ctx);
+        egui::Window::new("Custom monuments")
+            .default_width(420.)
+            .vscroll(true)
+            .show(ctx, |ui| self.source(ui, recipe, editable));
+    }
+
+    pub(super) fn source(&mut self, ui: &mut egui::Ui, recipe: &mut Project, editable: bool) {
+        let ctx = ui.ctx().clone();
+        let mut selected = None;
+        ui.add_enabled_ui(self.task.is_none(), |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Choose prefab…")
+                    .on_hover_text("RustEdit 1 .prefab. Keep the terrain files next to it.")
+                    .clicked()
+                    && let Some(path) = rfd::FileDialog::new().add_filter("RustEdit 1 prefab", &["prefab"]).pick_file()
+                {
+                    selected = Some(Selected::File(path));
                 }
             });
-        if !open {
-            *self = Self::default();
+        });
+        if let Some(selection) = selected {
+            self.request(&ctx, selection);
+        }
+
+        let mut save = None;
+        if let Some(draft) = &mut self.draft {
+            ui.add_space(4.);
+            ui.horizontal(|ui| {
+                let label = ui.label("Name");
+                ui.add_enabled(self.task.is_none(),
+                    egui::TextEdit::singleline(&mut draft.name).desired_width(208.)
+                ).labelled_by(label.id);
+            });
+            let parts = draft.source.prefab.prefabs.len();
+            let images = draft.source.terrain.len();
+            let mut summary = if parts == 1 { "1 prefab".to_owned() } else { format!("{parts} prefabs") };
+            if images > 0 { summary.push_str(&format!(" · {images} terrain {}", if images == 1 { "image" } else { "images" })); }
+            ui.weak(summary);
+            if let Some(issue) = &draft.placement_issue {
+                ui.colored_label(ui.visuals().warn_fg_color, issue);
+            }
+            if let Some(entry) = draft.saved.as_ref().filter(|entry| entry.name == draft.name.trim()) {
+                if draft.placement_issue.is_none() {
+                    let blocked = if !editable { Some("Finish the current edit first.") }
+                        else if !recipe.performance.monuments { Some("Enable Monuments in Recipe.") }
+                        else if recipe.installation.is_none() || !mapper_studio::native_preview::is_native(&recipe.preview_engine)
+                            { Some("Choose a Rust installation first.") }
+                        else { None };
+                    ui.add_enabled_ui(blocked.is_none() && self.task.is_none(), |ui| {
+                        placement_fields(ui, recipe.size, &mut self.position, &mut self.yaw);
+                        if ui.add(egui::Button::new(egui::RichText::new("Add to recipe").color(egui::Color32::WHITE))
+                            .fill(super::workbench_style::PRIMARY_ACTION)).clicked() {
+                            let placement = Placement {
+                                version: entry.version.as_str().to_owned(),
+                                position: self.position,
+                                yaw: self.yaw,
+                                name: entry.name.clone(),
+                                presence: mapper_studio::Presence::Required,
+                                baked: false,
+                            };
+                            self.notice = custom_monuments::add_placement(recipe, placement).err().map(Err);
+                        }
+                    }).response.on_disabled_hover_text(blocked.unwrap_or("Wait for the current operation."));
+                }
+            } else if ui.add_enabled(self.task.is_none() && !draft.name.trim().is_empty(),
+                egui::Button::new(egui::RichText::new("Save to library").color(egui::Color32::WHITE))
+                    .fill(super::workbench_style::PRIMARY_ACTION)).clicked() {
+                    save = Some((draft.source.clone(), draft.name.clone()));
+            }
+        } else if self.task.is_none() {
+            ui.weak("Select a RustEdit 1 .prefab to preview its footprint and splat mask.");
+        }
+        if let Some((source, name)) = save {
+            self.start(&ctx, "Saving monument…", move |stop| {
+                source.save_to_library(&name, || stop.load(Ordering::Relaxed)).map(Finished::Saved)
+            });
+        }
+        if !recipe.custom_monuments.is_empty() {
+            ui.collapsing(format!("In recipe ({})", recipe.custom_monuments.len()), |ui| {
+                egui::ScrollArea::vertical().max_height(110.).show(ui, |ui| {
+                    let mut remove = None;
+                    for (index, placement) in recipe.custom_monuments.iter().enumerate() {
+                        let name = self.library.iter().find(|entry| entry.version.as_str() == placement.version)
+                            .map_or_else(|| placement.version.get(..8).unwrap_or(&placement.version), |entry| entry.name.as_str());
+                        ui.push_id(index, |ui| {
+                            ui.horizontal(|ui| {
+                                let title = format!("{name} · {:.0}, {:.0}, {:.0}", placement.position[0], placement.position[1], placement.position[2]);
+                                if ui.add_enabled(editable, egui::Button::new("Remove")).clicked() { remove = Some(index); }
+                                ui.add(egui::Label::new(&title).truncate()).on_hover_text(format!("{title} m · {:.1}°", placement.yaw));
+                            });
+                        });
+                    }
+                    if let Some(index) = remove {
+                        recipe.custom_monuments.remove(index);
+                    }
+                });
+            });
+        }
+        if let Some(draft) = &mut self.draft {
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut draft.show_splat, false, "Prefab footprint")
+                    .on_hover_text("Prefab origins viewed from above. The cross marks the source origin.");
+                if draft.splat.is_some() {
+                    ui.selectable_value(&mut draft.show_splat, true, "Splat mask")
+                        .on_hover_text("Material weights shown in preview colors.");
+                }
+            });
+            let texture = if draft.show_splat {
+                draft.splat.as_ref().unwrap_or(&draft.footprint)
+            } else {
+                &draft.footprint
+            };
+            let size = texture.size_vec2();
+            let preview_height = (ui.clip_rect().bottom() - ui.cursor().top() - 16.).clamp(110., 320.);
+            let scale = ((ui.available_width() - 16.).clamp(1., 420.) / size.x).min(preview_height / size.y);
+            egui::Frame::new().fill(ui.visuals().extreme_bg_color).corner_radius(8)
+                .inner_margin(egui::Margin::same(8)).show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add(egui::Image::new((texture.id(), size * scale)));
+                    });
+                });
+        }
+        if let Some(task) = &self.task {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(task.activity);
+            });
+        }
+        match &self.notice {
+            Some(Ok(())) => { ui.weak("Saved to the custom monument library."); }
+            Some(Err(error)) => {
+                ui.colored_label(ui.visuals().error_fg_color, error);
+                crate::diagnostic_ui::copy_error(ui, error, None);
+            }
+            None => {}
         }
     }
 }

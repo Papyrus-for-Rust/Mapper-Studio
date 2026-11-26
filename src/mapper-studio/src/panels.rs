@@ -175,6 +175,7 @@ impl Studio {
         };
         let (tab, closed) = settings_dialog::show(
             ctx, "mapper-recipe-settings", &title, pages, self.recipe_settings_tab,
+            false,
             |ui, topic| {
                 let info = egui::UiStackInfo::default().with_tag(RECIPE_TAB_CONTENT);
                 ui.scope_builder(egui::UiBuilder::new().ui_stack_info(info), |ui| {
