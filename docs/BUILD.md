@@ -27,6 +27,16 @@ You can compile on another drive using `CARGO_TARGET_DIR` and pass its `release`
 
 For GitHub, ZIP the staged directory and attach it to a prerelease tagged `v0.1.0-beta.1`. Name the asset `Mapper-for-Rust-0.1.0-beta.1-win-x64.zip`. Include the corresponding source and publish its SHA-256. Mapper checks the public release feed when updates are enabled.
 
+## Windows installer
+
+Build the Windows setup wizard from the same verified directory used for the ZIP. Run this with [Inno Setup](https://jrsoftware.org/inno-setup/downloads) 6.6 or later and point `-Compiler` to `ISCC.exe` if it is outside your PATH.
+
+```powershell
+./tools/Build-MapperInstaller.ps1 -Directory artifacts/releases/Mapper-for-Rust-0.1.0-beta.1-win-x64
+```
+
+Attach `Mapper-for-Rust-0.1.0-beta.1-Setup-win-x64.exe` and its checksum to the same release. New users can run the setup wizard to install for their Windows account, add a Start menu shortcut, and uninstall through Windows Settings. Keep publishing the ZIP and its checksum for in-app updates. The installer uses the same update channel and leaves projects and preferences in place.
+
 ## Check changes
 
 ```powershell

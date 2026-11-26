@@ -157,6 +157,26 @@ pub fn populate_stage_targets(
     catalog: &crate::prefab_assets::Catalog,
     stages: &crate::monument_stages::Source,
 ) -> Result<usize, String> {
+    populate_installation_targets(project, catalog, stages, false)
+}
+
+pub fn populate_requested_landmarks(
+    project: &mut Project,
+    catalog: &crate::prefab_assets::Catalog,
+    stages: &crate::monument_stages::Source,
+) -> Result<usize, String> {
+    if !project.performance.monuments || !project.options.requests_landmarks() {
+        return Ok(0);
+    }
+    populate_installation_targets(project, catalog, stages, true)
+}
+
+fn populate_installation_targets(
+    project: &mut Project,
+    catalog: &crate::prefab_assets::Catalog,
+    stages: &crate::monument_stages::Source,
+    landmarks_only: bool,
+) -> Result<usize, String> {
     if !crate::native_preview::is_native(&project.preview_engine)
         || project.installation.as_ref() != Some(&catalog.installation)
     {
@@ -177,10 +197,15 @@ pub fn populate_stage_targets(
     {
         return Err("Population source differs from the project's pinned stage rules".into());
     }
-    let population = stages.population(catalog, project.size)?;
+    let population = stages.population_with_landmarks(catalog, project.size, |path| {
+        project.options.prefers_landmark(path)
+    })?;
     let mut next = project.clone();
     let mut added = 0;
     for (path, _, _) in population {
+        if landmarks_only && !project.options.prefers_landmark(&path) {
+            continue;
+        }
         if next
             .targets
             .iter()
@@ -202,11 +227,13 @@ pub fn populate_stage_targets(
         target.presence = Presence::Allowed;
         added += 1;
     }
-    next.monument_rules
-        .as_mut()
-        .and_then(|r| r.stage_rules.as_mut())
-        .ok_or("Bind installation monument rules before building its roster")?
-        .population = Some(crate::monument_stages::POPULATION_VERSION.into());
+    if !landmarks_only {
+        next.monument_rules
+            .as_mut()
+            .and_then(|r| r.stage_rules.as_mut())
+            .ok_or("Bind installation monument rules before building its roster")?
+            .population = Some(crate::monument_stages::POPULATION_VERSION.into());
+    }
     next.validate()?;
     *project = next;
     Ok(added)
@@ -841,12 +868,13 @@ fn solve_native_inner(
                     return Ok(check);
                 }
                 if let Some(stages) = source_rules.as_ref().and_then(|s| s.stage_source.as_ref()) {
-                    match stages.evaluate(
+                    match stages.evaluate_with_landmark_preference(
                         layers,
                         path,
                         project.seeds[4].value,
                         target.id,
                         [x, z],
+                        project.options.prefers_landmark(path),
                     )? {
                         papyrus_terrain::monument_stage::Check::Accepted { .. } => {}
                         papyrus_terrain::monument_stage::Check::FilterRejected { .. } => {
@@ -1641,17 +1669,19 @@ fn solve_adapted(
         .filter(|_| crate::coastal_placement::supported(&project.placement_engine))
         .map_or(160, |p| p.candidate_samples);
     let samples = landmark_search_samples(project, frozen, samples);
-    let limits = if project
-        .monument_rules
-        .as_ref()
+    let full_population = project.monument_rules.as_ref()
         .and_then(|r| r.stage_rules.as_ref())
-        .is_some_and(|b| b.population.is_some())
-    {
+        .is_some_and(|b| b.population.is_some());
+    let limits = if full_population || (project.options.requests_landmarks() && spacing_source.is_some()) {
         let source = spacing_source.ok_or("Missing bound installation population source")?;
-        let population =
-            source.population(authored.ok_or("Missing population catalog")?, project.size)?;
+        let population = source.population_with_landmarks(
+            authored.ok_or("Missing population catalog")?,
+            project.size,
+            |path| project.options.prefers_landmark(path),
+        )?;
         let paths: std::collections::BTreeMap<_, _> = population
             .into_iter()
+            .filter(|(path, _, _)| full_population || project.options.prefers_landmark(path))
             .map(|(p, group, maximum)| (p, (group, maximum)))
             .collect();
         Some(

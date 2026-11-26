@@ -125,13 +125,24 @@ pub fn resolve(
         if let Some(stages) = &mut rules.stage_rules {
             stages.population = population;
         }
-        // The saved binding has already been checked by the loader. Keep the
-        // decoded source for composition when resolution kept that binding.
-        if next.monument_rules.as_ref() == Some(&rules) && !cancelled() {
-            source.retain_verified(&rules, catalog, bindings);
-        }
+        let retain_source = next.monument_rules.as_ref() == Some(&rules);
         next.placement_engine = rules.engine.clone();
         next.monument_rules = Some(rules);
+        if !cancelled()
+            && next.performance.monuments
+            && next.options.requests_landmarks()
+            && let Some(stages) = &source.stage_source
+        {
+            next.monument_assets.get_or_insert_with(|| crate::AssetIdentity {
+                catalog_sha256: catalog.sha256.clone(),
+                bindings_sha256: bindings.sha256.clone(),
+            });
+            crate::placement_preview::populate_requested_landmarks(&mut next, catalog, stages)?;
+        }
+        // Retain the verified source when resolution kept the saved binding.
+        if retain_source && !cancelled() {
+            source.retain_verified(next.monument_rules.as_ref().unwrap(), catalog, bindings);
+        }
     }
     if let Some(roads) = &mut next.roads {
         let previous = crate::infrastructure::Source::cached(catalog, roads, &cancelled)?;

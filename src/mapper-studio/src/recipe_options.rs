@@ -156,6 +156,10 @@ impl Options {
         }
     }
 
+    pub fn requests_landmarks(&self) -> bool {
+        Landmark::ALL.into_iter().any(|family| self.landmark_choice(family) == Some(true))
+    }
+
     pub(crate) fn prefers_landmark(&self, path: &str) -> bool {
         Landmark::for_path(path).is_some_and(|family| self.landmark_choice(family) == Some(true))
     }

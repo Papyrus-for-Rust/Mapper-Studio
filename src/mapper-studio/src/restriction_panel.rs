@@ -94,18 +94,24 @@ impl Prepared {
             if !is_surface_prefab(path) {
                 continue;
             }
-            let mut perimeter = None;
+            let harbor = path.ends_with("/monument/harbor/harbor_1.prefab")
+                || path.ends_with("/monument/harbor/harbor_2.prefab");
+            let mut perimeters = Vec::new();
             for volume in report.volumes.iter().filter(|volume| volume.active) {
                 if cancelled() {
                     return Err("No-build preparation cancelled".into());
                 }
-                if let Some(area) = surface_area(path, &volume.geometry)
-                    && perimeter.is_none_or(|(largest, _)| area > largest)
-                {
-                    perimeter = Some((area, &volume.geometry));
+                if let Some(area) = surface_area(path, &volume.geometry) {
+                    perimeters.push((area, &volume.geometry));
                 }
             }
-            let polygons = perimeter.map_or_else(Vec::new, |(_, geometry)| geometry.footprints());
+            perimeters.sort_by(|(a, _), (b, _)| b.total_cmp(a));
+            let primary = perimeters.first().into_iter().copied();
+            let harbor_zones = perimeters.iter().skip(1).copied().filter(|(_, geometry)| {
+                matches!(geometry, mapper_studio::no_build::Geometry::Sphere { .. })
+            }).take(if harbor { 2 } else { 0 });
+            let polygons = primary.chain(harbor_zones)
+                .flat_map(|(_, geometry)| geometry.footprints()).collect();
             footprints.insert(path.clone(), Footprints::new(polygons));
         }
         if cancelled() {
@@ -694,7 +700,7 @@ pub fn grid(
         for row in rows {
             for col in columns.clone() {
                 let corner = egui::pos2(line_x(col), line_y(row));
-                for glyph in style.glyphs(col, row) {
+                for glyph in style.glyphs_scaled(col, row, 1.65) {
                     let rect = Rect::from_min_max(
                         corner + glyph.cell_rect.min.to_vec2() * step,
                         corner + glyph.cell_rect.max.to_vec2() * step,
@@ -714,10 +720,10 @@ pub fn grid(
     let inset = step * 0.05;
     let label_x = |col| line_x(col) + inset.x;
     let label_y = |row| line_y(row) + inset.y;
-    let font = egui::FontId::monospace((step.y * 0.18).clamp(7., 11.));
+    let font = egui::FontId::monospace((step.y * 0.23).clamp(9., 15.));
     let color = Color32::from_rgba_unmultiplied(108, 108, 108, 104);
-    let columns = visible_grid_indices(cells, clip.left() - 42., clip.right(), label_x);
-    let rows = visible_grid_indices(cells, clip.top() - 14., clip.bottom(), label_y);
+    let columns = visible_grid_indices(cells, clip.left() - 56., clip.right(), label_x);
+    let rows = visible_grid_indices(cells, clip.top() - 19., clip.bottom(), label_y);
     for row in rows {
         let y = label_y(row);
         for col in columns.clone() {
@@ -878,6 +884,61 @@ mod tests {
         // but it encloses less ground than the site's main restriction.
         assert!((surface_area(surface, &rotated).unwrap() - 10_000.).abs() < 0.01);
         assert!(surface_area(surface, &boundary) > surface_area(surface, &rotated));
+    }
+
+    #[test]
+    fn harbor_retains_three_surface_zones_and_other_monuments_keep_one() {
+        use mapper_studio::no_build::{Geometry, Report, Volume};
+        let ctx = egui::Context::default();
+        let mut app = super::super::tests::fixture(&ctx);
+        let path = app.project.targets[0].prefab_path.clone().unwrap();
+        app.prefabs.seed_test_stamp(&ctx, &mut app.project, &path);
+        let source = app.prefabs.catalog(&app.project).unwrap();
+        let mut catalog = Catalog {
+            sha256: source.sha256.clone(),
+            installation: source.installation.clone(),
+            entries: source.entries.clone(),
+            sources: source.sources.clone(),
+        };
+        let report = Report {
+            version: mapper_studio::no_build::VERSION,
+            space: "prefab-root-local-unity".into(),
+            layer_index: 29,
+            nodes_visited: 5,
+            complete: true,
+            issues: Vec::new(),
+            should_display_on_map: None,
+            volumes: [
+                ([0., 0., 0.], 250.),
+                ([-300., 0., 0.], 150.),
+                ([300., 0., 0.], 100.),
+                ([0., 0., 0.], 10.),
+                ([0., -300., 0.], 160.),
+            ].into_iter().enumerate().map(|(index, (center, radius))| Volume {
+                object_id: index as i64 + 1,
+                active: true,
+                geometry: Geometry::Sphere { center, radius },
+            }).collect(),
+        };
+        let asset = mapper_studio::prefab_assets::Asset {
+            priority: None, bounds: None, yaw: None, modifier_size: None,
+            modifier_offset: None, texture_guids: Default::default(), splat_mask: None,
+            modifier: None, modifier_absent: false, water_geometry: None,
+            no_build_geometry: Some(report), display_name: None,
+        };
+        catalog.entries.insert(path.clone(), asset.clone());
+        for variant in ["harbor_1", "harbor_2"] {
+            catalog.entries.insert(
+                format!("assets/bundled/prefabs/autospawn/monument/harbor/{variant}.prefab"),
+                asset.clone(),
+            );
+        }
+        let prepared = Prepared::new(Arc::new(catalog), || false).unwrap();
+        assert_eq!(prepared.footprints[&path].polygons.len(), 1);
+        for variant in ["harbor_1", "harbor_2"] {
+            let path = format!("assets/bundled/prefabs/autospawn/monument/harbor/{variant}.prefab");
+            assert_eq!(prepared.footprints[&path].polygons.len(), 3);
+        }
     }
 
     #[test]

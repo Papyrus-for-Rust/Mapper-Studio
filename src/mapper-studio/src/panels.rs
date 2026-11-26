@@ -465,7 +465,7 @@ impl Studio {
             recipe_disclosure(ui, "Landmarks", "Set generation preferences for oasis, lake, and canyon variants.", |ui| {
                 for family in Landmark::ALL {
                     generation_rule(ui, family.label(), options.landmark(family),
-                        "Search more sites for this landmark. Installation size limits and terrain rules still apply.",
+                        "Try to place this landmark even below its usual map size. Terrain and spacing rules still apply.",
                         "Skip every variant in this landmark family.",
                         "Use the normal landmark search for this installation.");
                     if options.landmark_choice(family) == Some(true)
@@ -473,7 +473,7 @@ impl Studio {
                         && let Some(minimum) = source.landmark_minimum(catalog, family)
                         && size < minimum
                     {
-                        ui.weak(format!("{} requires {minimum} m or larger in this Rust installation.", family.label()));
+                        ui.weak(format!("{} normally starts at {minimum} m. Mapper will try it on this map.", family.label()));
                     }
                 }
             });

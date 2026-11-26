@@ -421,6 +421,15 @@ impl Source {
         catalog: &Catalog,
         size: u32,
     ) -> Result<Vec<(String, i64, Option<usize>)>, String> {
+        self.population_with_landmarks(catalog, size, |_| false)
+    }
+
+    pub(crate) fn population_with_landmarks(
+        &self,
+        catalog: &Catalog,
+        size: u32,
+        force: impl Fn(&str) -> bool,
+    ) -> Result<Vec<(String, i64, Option<usize>)>, String> {
         if catalog.sha256 != self.doc.catalog_sha256 {
             return Err("Population catalog differs from installation stages".into());
         }
@@ -432,21 +441,9 @@ impl Source {
             if stage.program().disabled
                 || stage.mode & self.policy.realm_mask == 0
                 || stage.nexus_only
-                || size < stage.minimum_world_size
             {
                 continue;
             }
-            let maximum = if stage.target_count == 0 {
-                None
-            } else {
-                let count = (stage.target_count as f64
-                    * curve_value(&stage.target_count_curve, size as f64)?)
-                .round_ties_even();
-                if !count.is_finite() || count < 0. {
-                    return Err("Invalid source monument target count".into());
-                }
-                (count > 0.).then_some((count as usize).min(papyrus_terrain::placement::MAX_TARGETS))
-            };
             let mut paths: Vec<_> = catalog
                 .entries
                 .iter()
@@ -455,6 +452,7 @@ impl Source {
                         .prefab_stage_matches
                         .get(*path)
                         .is_some_and(|ids| ids == &[stage.object_id])
+                        && (size >= stage.minimum_world_size || force(path))
                         && asset
                             .bounds
                             .as_ref()
@@ -462,6 +460,21 @@ impl Source {
                 })
                 .map(|(p, _)| p.clone())
                 .collect();
+            if paths.is_empty() {
+                continue;
+            }
+            let maximum = if stage.target_count == 0 {
+                None
+            } else {
+                let count = (stage.target_count as f64
+                    * curve_value(&stage.target_count_curve, size.max(stage.minimum_world_size) as f64)?)
+                .round_ties_even();
+                if !count.is_finite() || count < 0. {
+                    return Err("Invalid source monument target count".into());
+                }
+                (count > 0. || size < stage.minimum_world_size)
+                    .then_some((count as usize).clamp(1, papyrus_terrain::placement::MAX_TARGETS))
+            };
             paths.sort();
             result.extend(paths.into_iter().map(|p| (p, stage.object_id, maximum)));
         }
@@ -702,6 +715,18 @@ impl Source {
         id: u64,
         point: [f32; 2],
     ) -> Result<Check, String> {
+        self.evaluate_with_landmark_preference(layers, path, seed, id, point, false)
+    }
+
+    pub(crate) fn evaluate_with_landmark_preference(
+        &self,
+        layers: &Layers,
+        path: &str,
+        seed: u32,
+        id: u64,
+        point: [f32; 2],
+        force: bool,
+    ) -> Result<Check, String> {
         let Some(ids) = self.doc.prefab_stage_matches.get(path) else {
             return Ok(Check::Skipped("Prefab has no captured monument stage"));
         };
@@ -733,9 +758,13 @@ impl Source {
         // Independent coordinate-keyed draw in (0,1]. Pinning an accepted pose
         // cannot change its draw by changing a trial counter or target ordering.
         let draw = ((h >> 8) + 1) as f32 / 16_777_216.;
+        let mut program = stage.program();
+        if force {
+            program.minimum_world_size = 0;
+        }
         monument_stage::evaluate(
             layers,
-            &stage.program(),
+            &program,
             Context {
                 realm_mask: self.policy.realm_mask,
                 cached: false,
@@ -1133,6 +1162,47 @@ mod tests {
         doc["stages"][0]["disabled"] = serde_json::json!(true);
         assert!(decode(&doc).population(&catalog, 4000).unwrap().is_empty());
     }
+    #[test]
+    fn requested_landmark_can_try_a_3000m_map_without_skipping_terrain_filter() {
+        let (mut catalog, mut doc) = fixture();
+        let path = "assets/bundled/prefabs/autospawn/unique_environment/oasis/ue_oasis_a.prefab";
+        let original = "assets/bundled/prefabs/autospawn/monument/arctic_bases/test.prefab";
+        let mut asset = catalog.entries.remove(original).unwrap();
+        asset.bounds = Some(crate::prefab_assets::Bounds {
+            center: [0.; 3],
+            extent: [10.; 3],
+            minimum_world_size: 0,
+        });
+        catalog.entries.insert(path.to_owned(), asset);
+        let matches = doc["prefab_stage_matches"].as_object_mut().unwrap();
+        let stage_ids = matches.remove(original).unwrap();
+        matches.insert(path.into(), stage_ids);
+        doc["stages"][0]["folders"] = serde_json::json!([format!("{}/", path.rsplit_once('/').unwrap().0)]);
+        doc["stages"][0]["minimum_world_size"] = serde_json::json!(4000);
+        let source = Source::decode(&serde_json::to_vec(&doc).unwrap(), &catalog).unwrap();
+        assert!(source.population(&catalog, 3000).unwrap().is_empty());
+
+        let mut options = crate::recipe_options::Options { oasis: Some(true), ..Default::default() };
+        let population = source.population_with_landmarks(&catalog, 3000, |path| {
+            options.prefers_landmark(path)
+        }).unwrap();
+        assert_eq!(population, [(path.to_owned(), 1, Some(1))]);
+
+        let mut layers = layers();
+        layers.size = 3000;
+        assert!(matches!(source.evaluate(&layers, path, 1, 17, [0.; 2]).unwrap(), Check::Skipped(_)));
+        let evaluate = |layers: &Layers| {
+            source.evaluate_with_landmark_preference(layers, path, 1, 17, [0.; 2],
+                options.prefers_landmark(path)).unwrap()
+        };
+        assert!(matches!(evaluate(&layers), Check::Accepted { .. }));
+        layers.biome.fill(0);
+        assert!(matches!(evaluate(&layers), Check::FilterRejected { .. }));
+        options.oasis = Some(false);
+        assert!(options.landmark_blocker(path).is_some());
+        assert!(!options.prefers_landmark(path));
+    }
+
     #[test]
     fn population_curve_preserves_smooth_and_step_transitions() {
         let (_, doc) = fixture();

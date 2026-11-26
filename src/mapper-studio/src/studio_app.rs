@@ -98,6 +98,7 @@ enum Action {
     New,
     Open,
     AcceptOpened,
+    Restart,
     Close,
 }
 #[derive(Clone)]
@@ -1048,6 +1049,11 @@ impl Studio {
                 self.plugins.cancel();
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Action::Restart => {
+                if self.updates.restart(self.path.as_deref()) {
+                    self.perform(Action::Close, ctx);
+                }
             }
             Action::New => self.replace_project(Self::new_workbench_project(), None),
             Action::AcceptOpened => self.accept_opened_project(),
@@ -2650,9 +2656,16 @@ impl eframe::App for Studio {
         self.recipe_tabs.rename_window(&ctx);
         self.settings_window(&ctx);
         self.support_snapshot_window(&ctx);
-        let can_restart = self.updates.awaiting_restart() && !self.dirty() && !self.generation_in_progress()
-            && !self.project_io.busy() && self.pending.is_none();
-        self.updates.show(&ctx, self.path.as_deref(), can_restart);
+        let restart_blocker = if self.generation_in_progress() {
+            Some("Finish or cancel generation before restarting.")
+        } else if self.project_io.busy() || self.pending.is_some() {
+            Some("Finish the current project action before restarting.")
+        } else {
+            None
+        };
+        if self.updates.show(&ctx, restart_blocker) {
+            self.request(Action::Restart, &ctx);
+        }
         self.export_options(&ctx);
         self.handle_ui_scale_shortcuts(&ctx);
         self.persist_preferences();
@@ -4855,6 +4868,19 @@ mod tests {
         app.request(Action::New, &ctx);
         assert!(app.pending.is_none());
         assert!(!app.dirty());
+    }
+
+    #[test]
+    fn restarting_for_update_prompts_for_unsaved_project_changes() {
+        let ctx = egui::Context::default();
+        let mut app = fixture(&ctx);
+        app.project.size = 3000;
+        assert!(app.dirty());
+
+        app.request(Action::Restart, &ctx);
+
+        assert!(matches!(app.pending, Some(Action::Restart)));
+        assert!(!app.allow_close);
     }
 
     #[test]

@@ -173,8 +173,16 @@ impl Appearance {
     }
 
     pub fn glyphs(&self, column: u32, row: u32) -> impl Iterator<Item = Glyph> {
+        self.glyphs_scaled(column, row, 1.)
+    }
+
+    pub fn glyphs_scaled(&self, column: u32, row: u32, scale: f32) -> impl Iterator<Item = Glyph> {
+        let inset = self.receipt.number_offset;
         let size = self.receipt.number_size / self.receipt.zoom.unwrap_or(LEGACY_ZOOM);
-        glyphs(column, row, self.receipt.number_offset, size)
+        // Leave space for AA99 at the right edge and preserve the first letter
+        // when it starts to the left of the authored inset.
+        let limit = ((1. - inset) / 2.3).min(inset / 0.2);
+        glyphs(column, row, inset, (size * scale).min(limit.max(size)))
     }
 
     pub fn color(&self, labels: bool) -> Color32 {

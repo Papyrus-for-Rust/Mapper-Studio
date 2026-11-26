@@ -89,6 +89,9 @@ impl MonumentPanel {
         Err("This Rust installation needs a tested monument-generation adapter. Choose a supported installation in Settings.".into())
     }
     pub fn populate_installation(&self, project: &mut Project, catalog: &Catalog) -> Result<usize, String> {
+        self.populate_installation_targets(project, catalog, false)
+    }
+    fn populate_installation_targets(&self, project: &mut Project, catalog: &Catalog, landmarks_only: bool) -> Result<usize, String> {
         let source = self.source.as_ref().ok_or("Installation monument rules are still loading")?;
         let current_stages = source.stage_source.as_ref().ok_or("This installation needs a tested generation-scene adapter before its roster can be populated")?;
         let mut next = project.clone();
@@ -103,7 +106,11 @@ impl MonumentPanel {
         let saved_stages;
         let stages=if binding.source_sha256==current_stages.sha256 {current_stages}
             else {saved_stages=mapper_studio::monument_stages::Source::cached_metadata(binding,catalog,||false)?;&saved_stages};
-        let added = mapper_studio::placement_preview::populate_stage_targets(&mut next, catalog, stages)?;
+        let added = if landmarks_only {
+            mapper_studio::placement_preview::populate_requested_landmarks(&mut next, catalog, stages)?
+        } else {
+            mapper_studio::placement_preview::populate_stage_targets(&mut next, catalog, stages)?
+        };
         *project = next;
         Ok(added)
     }
@@ -111,8 +118,10 @@ impl MonumentPanel {
         let has_roster = project.monument_rules.as_ref()
             .and_then(|rules| rules.stage_rules.as_ref())
             .is_some_and(|rules| rules.population.is_some());
-        if has_roster && let Some(catalog) = catalog {
-            self.populate_installation(project, catalog)
+        let needs_landmarks = project.performance.monuments && project.options.requests_landmarks()
+            && self.source.as_ref().is_some_and(|source| source.stage_source.is_some());
+        if (has_roster || needs_landmarks) && let Some(catalog) = catalog {
+            self.populate_installation_targets(project, catalog, !has_roster)
                 .map_err(|error| format!("Cannot refresh installation roster: {error}"))?;
         }
         Ok(())
