@@ -528,6 +528,10 @@ impl Studio {
                     } else if dragged || child.rect_contains_pointer(rect) {
                         child.painter().rect_filled(rect.shrink(0.5), 5., bg);
                     } else {
+                        if projected % 2 == 1 {
+                            let stripe = child.visuals().panel_fill.lerp_to_gamma(bg, 0.60);
+                            child.painter().rect_filled(rect, 0., stripe);
+                        }
                         child.painter().hline(
                             rect.x_range(),
                             rect.bottom(),
