@@ -473,7 +473,7 @@ impl Studio {
             return;
         }
         if let Some((path, name)) = settings_request {
-            self.content.open_monument_settings(&self.project, path, name);
+            self.content.open_monument_settings(&self.project, self.recipe_tabs.active(), path, name);
         }
     }
 

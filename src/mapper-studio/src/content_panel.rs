@@ -92,6 +92,7 @@ impl Drop for OverlayTask {
 }
 
 struct MonumentSettings {
+    recipe_id: u64,
     name: String,
     path: String,
     recovery_anchor: Option<u32>,
@@ -277,7 +278,7 @@ impl ContentPanel {
             }
             if !project.monument_addons.is_empty() {
                 ui.separator();
-                ui.strong("Embedded overlays");
+                ui.strong("Embedded layouts");
                 let mut remove = None;
                 for (index, addon) in project.monument_addons.iter().enumerate() {
                     ui.push_id(index, |ui| {
@@ -297,7 +298,7 @@ impl ContentPanel {
                     {
                         Ok(_) => {
                             project.monument_addons.remove(index);
-                            "Overlay moved to the library.".into()
+                            "Layout moved to the library.".into()
                         }
                         Err(error) => error,
                     };
@@ -326,19 +327,19 @@ impl ContentPanel {
             ui.label(format!("{} m source map", item.map.size))
                 .on_hover_text(format!("Prefabs {} · Paths {}", item.map.prefabs.len(), item.map.paths.len()));
             ui.label("Package name");ui.text_edit_singleline(&mut self.name);
-            egui::ComboBox::from_id_salt("content-kind").selected_text(if self.addon{"Monument add-on"}else{"Standalone custom monument"}).show_ui(ui,|ui|{
-                ui.selectable_value(&mut self.addon,true,"Monument add-on");ui.selectable_value(&mut self.addon,false,"Standalone custom monument");
+            egui::ComboBox::from_id_salt("content-kind").selected_text(if self.addon{"Monument layout"}else{"Custom monument"}).show_ui(ui,|ui|{
+                ui.selectable_value(&mut self.addon,true,"Monument layout");ui.selectable_value(&mut self.addon,false,"Custom monument");
             });
             if self.addon{
                 ui.label("Anchor source index");ui.add(egui::DragValue::new(&mut self.anchor).range(0..=item.map.prefabs.len().saturating_sub(1)));
                 if let Some(p)=item.map.prefabs.get(self.anchor){ui.label(format!("Asset ID {} · {}",p.id,p.category));ui.small(format!("Origin ({:.1}, {:.1}, {:.1}) · yaw {:.1}°",p.position.x,p.position.y,p.position.z,p.rotation.y));}
-                if ui.button("Save overlay to library").on_hover_text(
+                if ui.button("Save layout to library").on_hover_text(
                     "Choose this version later in the monument's settings."
                 ).clicked() {
                     self.message = match monument_addons::import(item, self.name.clone(), self.anchor)
                         .and_then(|addon| monument_addons::Library::local()?.store(&addon))
                     {
-                        Ok(_) => "Overlay saved to the library.".into(),
+                        Ok(_) => "Layout saved to the library.".into(),
                         Err(error) => error,
                     };
                 }
@@ -433,7 +434,7 @@ mod tests {
         let mut project = Project::default();
         let anchor = 4_163_222_222;
         project.monument_overlay_choices.insert(anchor, "a".repeat(64));
-        panel.open_overlay_recovery(&project, anchor, String::new(), "Monument overlay".into(),
+        panel.open_overlay_recovery(&project, crate::FIRST_RECIPE, anchor, String::new(), "Monument layout".into(),
             "Version unavailable".into());
         let (sender, receiver) = std::sync::mpsc::channel();
         let settings = panel.monument_settings.as_mut().unwrap();
@@ -473,16 +474,18 @@ mod tests {
         sender.send(Ok(Vec::new())).unwrap();
         render(&mut panel, &mut project, vec![]);
         assert!(project.monument_overlay_choices.is_empty());
+        assert_eq!(panel.monument_settings_recipe(), Some(crate::FIRST_RECIPE));
     }
 }
 
 impl ContentPanel {
-    pub(super) fn monument_settings_open(&self) -> bool {
-        self.monument_settings.is_some()
+    pub(super) fn monument_settings_recipe(&self) -> Option<u64> {
+        self.monument_settings.as_ref().map(|settings| settings.recipe_id)
     }
 
-    pub(super) fn open_monument_settings(&mut self, project: &Project, path: String, name: String) {
+    pub(super) fn open_monument_settings(&mut self, project: &Project, recipe_id: u64, path: String, name: String) {
         self.monument_settings = Some(MonumentSettings {
+            recipe_id,
             name,
             path,
             recovery_anchor: None,
@@ -494,8 +497,8 @@ impl ContentPanel {
         });
     }
 
-    pub(super) fn open_overlay_recovery(&mut self, project: &Project, anchor: u32, path: String, name: String, message: String) {
-        self.open_monument_settings(project, path, name);
+    pub(super) fn open_overlay_recovery(&mut self, project: &Project, recipe_id: u64, anchor: u32, path: String, name: String, message: String) {
+        self.open_monument_settings(project, recipe_id, path, name);
         if let Some(settings) = &mut self.monument_settings {
             settings.recovery_anchor = Some(anchor);
             settings.message = message;
@@ -526,7 +529,7 @@ impl ContentPanel {
                     let library = monument_addons::Library::local()?;
                     let cancelled = || signal.load(Ordering::Relaxed);
                     for addon in &embedded {
-                        if cancelled() { return Err("Overlay library scan cancelled".into()); }
+                        if cancelled() { return Err("Layout library scan cancelled".into()); }
                         library.store(addon)?;
                     }
                     library.versions_cancellable(anchor, cancelled)
@@ -539,7 +542,7 @@ impl ContentPanel {
         if let Some(task) = &settings.task {
             let result = match task.receiver.try_recv() {
                 Ok(result) => Some(result),
-                Err(TryRecvError::Disconnected) => Some(Err("Overlay library worker stopped".into())),
+                Err(TryRecvError::Disconnected) => Some(Err("Layout library worker stopped".into())),
                 Err(TryRecvError::Empty) => None,
             };
             if let Some(result) = result {
@@ -548,7 +551,7 @@ impl ContentPanel {
                 match result {
                     Ok(versions) => {
                         settings.versions = versions;
-                        if importing { settings.message = "Version saved to the library".into(); }
+                        if importing { settings.message = "Layout saved to the library".into(); }
                     }
                     Err(error) => settings.message = error,
                 }
@@ -561,6 +564,7 @@ impl ContentPanel {
             .default_width(360.)
             .open(&mut open)
             .show(ctx, |ui| {
+                let layout_label = ui.strong("Layout");
                 if let Some(anchor) = anchor {
                     let current = project.monument_overlay_choices.get(&anchor).map(String::as_str);
                     let embedded = project.monument_addons.iter().any(|addon| addon.anchor_id == anchor);
@@ -581,7 +585,7 @@ impl ContentPanel {
                                     "Missing library version".into()
                                 }
                             }, version_label),
-                        None if embedded => "Embedded overlays".into(),
+                        None if embedded => "Embedded layouts".into(),
                         None => "Stock monument".into(),
                     };
                     let mut selected = false;
@@ -599,7 +603,8 @@ impl ContentPanel {
                                 selected = true;
                             }
                         }
-                    }).response.on_hover_text("This recipe uses the selected version for every matching monument.");
+                    }).response.labelled_by(layout_label.id)
+                        .on_hover_text("This recipe applies the selected layout to every placement of this monument.");
                     if selected && (chosen != current || embedded) {
                         let chosen = chosen.map(str::to_owned);
                         let result = (|| {
@@ -618,16 +623,16 @@ impl ContentPanel {
                     }
                 }
                 ui.horizontal(|ui| {
-                    let add = ui.add_enabled(available_anchor.is_some() && settings.task.is_none(), egui::Button::new("Import overlay version…"))
-                        .on_hover_text("Choose a .map or .mapperasset with this monument’s stock prefab as its anchor.")
+                    let add = ui.add_enabled(available_anchor.is_some() && settings.task.is_none(), egui::Button::new("Import layout…"))
+                        .on_hover_text("Choose a .map or .mapperasset containing this stock monument and the prefabs to attach.")
                         .on_disabled_hover_text(if available_anchor.is_none() {
                             "Prepare this monument’s Rust installation first."
                         } else {
-                            "The overlay library is busy."
+                            "The layout library is busy."
                         });
                     if add.clicked()
                         && let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Monument overlay", &["map", "mapperasset"]).pick_file()
+                            .add_filter("Monument layout", &["map", "mapperasset"]).pick_file()
                         && let (Some(anchor), Some(ids)) = (available_anchor, identities.as_ref())
                     {
                         settings.message.clear();
@@ -637,7 +642,7 @@ impl ContentPanel {
                             let item = Imported::read_file(&path, cancelled)?;
                             let addon = monument_addons::import_for_anchor(&item, anchor)?;
                             ids.addons.check(std::slice::from_ref(&addon))?;
-                            if cancelled() { return Err("Overlay import cancelled".into()); }
+                            if cancelled() { return Err("Layout import cancelled".into()); }
                             let library = monument_addons::Library::local()?;
                             library.store(&addon)?;
                             library.versions_cancellable(anchor, cancelled)

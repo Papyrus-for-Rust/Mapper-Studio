@@ -2792,7 +2792,7 @@ mod tests {
                 },
             ]);
         }
-        assert!(app.content.monument_settings_open());
+        assert_eq!(app.content.monument_settings_recipe(), Some(FIRST_RECIPE));
         assert_eq!(app.project.targets.len(), count);
         assert!(app.project.monument_addons.is_empty());
     }

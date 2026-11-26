@@ -412,7 +412,7 @@ impl GenerationBlocker {
             Self::MatchingInstallation => "Choose the matching Rust installation in Settings",
             Self::AssetsUnavailable => "Installation assets unavailable",
             Self::QueueFull => "The generation queue is full. Wait for a map to finish or remove one in Queue.",
-            Self::CheckingOverlays => "Checking custom monument content…",
+            Self::CheckingOverlays => "Checking monument layouts…",
             Self::Overlay { message, .. }
             | Self::UnsupportedNativeProfile(message)
             | Self::Other(message) => message,
@@ -1730,15 +1730,15 @@ impl Studio {
                 }
             }
             GenerationBlocker::Overlay { anchor, message } => {
-                if ui.button("Fix overlay…").on_hover_text(message).clicked() {
+                if ui.button("Fix layout…").on_hover_text(message).clicked() {
                     self.with_recipe_draft(|studio| {
                         let recipe = &studio.project;
                         let identities = studio.source.bound_root_ref(recipe)
                             .and_then(|root| studio.prefabs.prepared_identities(recipe, root));
                         let path = identities.as_ref().and_then(|ids| ids.prefab_path(*anchor))
                             .unwrap_or_default().to_owned();
-                        let name = studio.monument_icons.name(Some(&path), "Monument overlay");
-                        studio.content.open_overlay_recovery(recipe, *anchor, path, name, message.clone());
+                        let name = studio.monument_icons.name(Some(&path), "Monument layout");
+                        studio.content.open_overlay_recovery(recipe, studio.recipe_tabs.editor(), *anchor, path, name, message.clone());
                     });
                 }
                 ui.ctx().request_repaint_after(std::time::Duration::from_secs(2));
