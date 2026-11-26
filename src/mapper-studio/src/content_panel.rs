@@ -63,7 +63,7 @@ impl Drop for ImportTask {
 
 enum LayoutResult {
     Versions(Vec<monument_addons::Version>),
-    Preview(monument_addons::PrefabLayout),
+    Preview(monument_addons::AddOn),
 }
 
 struct OverlayTask {
@@ -105,7 +105,7 @@ struct MonumentSettings {
     task: Option<OverlayTask>,
     loaded_anchor: Option<u32>,
     versions: Vec<monument_addons::Version>,
-    preview: Option<monument_addons::PrefabLayout>,
+    preview: Option<monument_addons::AddOn>,
     message: String,
 }
 
@@ -119,14 +119,10 @@ fn save_layout(addon: &monument_addons::AddOn, signal: &AtomicBool) -> Result<La
     library.versions_cancellable(addon.anchor_id, cancelled).map(LayoutResult::Versions)
 }
 
-fn preview_layout(ui: &mut egui::Ui, layout: &monument_addons::PrefabLayout) {
-    let children = &layout.addon.children;
-    ui.label(format!("{} · {} objects", layout.addon.name, children.len()));
-    ui.weak(if layout.authored_anchor {
-        "Using the stock monument in the source file as the pivot."
-    } else {
-        "This prefab has no matching stock monument. Use a .map to read the original position and rotation."
-    });
+fn preview_layout(ui: &mut egui::Ui, layout: &monument_addons::AddOn) {
+    let children = &layout.children;
+    ui.label(format!("{} · {} objects", layout.name, children.len()));
+    ui.weak("The cross marks the stock monument. Imports placed prefabs only. Terrain and RustEdit data layers stay with the source map.");
     let (_, painter) = ui.allocate_painter(
         egui::vec2(ui.available_width(), 132.),
         egui::Sense::hover(),
@@ -153,9 +149,6 @@ fn preview_layout(ui: &mut egui::Ui, layout: &monument_addons::PrefabLayout) {
     let stroke = egui::Stroke::new(1.5, theme.text_color());
     painter.hline(origin.x - 5. ..=origin.x + 5., origin.y, stroke);
     painter.vline(origin.x, origin.y - 5. ..=origin.y + 5., stroke);
-    if layout.has_unapplied_metadata {
-        ui.weak("Saving the layout keeps the placed objects. RustEdit metadata is omitted.");
-    }
 }
 
 pub(super) struct ContentPanel {
@@ -686,7 +679,7 @@ impl ContentPanel {
                 }
                 ui.horizontal(|ui| {
                     let add = ui.add_enabled(available_anchor.is_some() && settings.task.is_none(), egui::Button::new("Import layout…"))
-                        .on_hover_text("Export a RustEdit .map containing this stock monument and the objects you want to attach. Mapper aligns the objects to the stock monument.")
+                        .on_hover_text("Choose a RustEdit .map with one copy of this stock monument and the objects to attach. The source terrain stays behind. Mapper layout packages also work.")
                         .on_disabled_hover_text(if available_anchor.is_none() {
                             "Prepare this monument’s Rust installation first."
                         } else {
@@ -696,7 +689,6 @@ impl ContentPanel {
                         && let Some(path) = rfd::FileDialog::new()
                             .add_filter("RustEdit layout map", &["map"])
                             .add_filter("Mapper layout package", &["mapperasset"])
-                            .add_filter("RustEdit 1 prefab", &["prefab"])
                             .pick_file()
                         && let (Some(anchor), Some(ids)) = (available_anchor, identities.as_ref())
                     {
@@ -705,18 +697,10 @@ impl ContentPanel {
                         let ids = Arc::clone(ids);
                         match OverlayTask::start(ctx, true, move |signal| {
                             let cancelled = || signal.load(Ordering::Relaxed);
-                            if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("prefab")) {
-                                let name = path.file_stem().and_then(|name| name.to_str())
-                                    .unwrap_or("RustEdit layout").to_owned();
-                                let source = rustedit_prefab::Source::read(&path, cancelled)?;
-                                let preview = monument_addons::import_rustedit_layout(source, name, anchor)?;
-                                ids.addons.check(std::slice::from_ref(&preview.addon))?;
-                                return Ok(LayoutResult::Preview(preview));
-                            }
                             let item = Imported::read_file(&path, cancelled)?;
                             let addon = monument_addons::import_for_anchor(&item, anchor)?;
                             ids.addons.check(std::slice::from_ref(&addon))?;
-                            save_layout(&addon, signal)
+                            Ok(LayoutResult::Preview(addon))
                         }) {
                             Ok(task) => settings.task = Some(task),
                             Err(error) => settings.message = error,
@@ -739,16 +723,11 @@ impl ContentPanel {
                     preview_layout(ui, preview);
                     let discard = ui.horizontal(|ui| {
                         let idle = settings.task.is_none();
-                        let label = if preview.authored_anchor {
-                            "Save layout"
-                        } else {
-                            "Save using prefab origin"
-                        };
-                        let save = ui.add_enabled(idle && available_anchor == Some(preview.addon.anchor_id),
-                            egui::Button::new(label)).clicked();
+                        let save = ui.add_enabled(idle && available_anchor == Some(preview.anchor_id),
+                            egui::Button::new("Save layout")).clicked();
                         let clear = ui.add_enabled(idle, egui::Button::new("Discard preview")).clicked();
                         if save {
-                            let addon = preview.addon.clone();
+                            let addon = preview.clone();
                             settings.message.clear();
                             match OverlayTask::start(ctx, true, move |signal| save_layout(&addon, signal)) {
                                 Ok(task) => settings.task = Some(task),
