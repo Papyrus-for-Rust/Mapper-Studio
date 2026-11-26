@@ -185,10 +185,14 @@ fn seed_button(
     }
     let recipe_name = item.origin.as_ref().map(|origin| origin.name.as_str());
     let label = seed.to_string();
+    let display = match item.label.split_once(" · ") {
+        Some((_, id)) if id.parse::<u64>() == Ok(item.id) => format!("{label} · {id}"),
+        _ => label.clone(),
+    };
     let response = ui.add_sized(
         [width - 2., 22.],
         egui::Button::new(egui::Atoms::new((
-            egui::RichText::new(&label).monospace().atom_shrink(true),
+            egui::RichText::new(&display).monospace().atom_shrink(true),
             egui::Atom::grow(),
         )))
         .frame(false)
@@ -889,7 +893,7 @@ mod tests {
         render(vec![]);
         let (_, initial) = render(vec![]);
         let seed_pos = initial.shapes.iter().find_map(|shape| match &shape.shape {
-            egui::Shape::Text(text) if text.galley.job.text == "42781" => {
+            egui::Shape::Text(text) if text.galley.job.text == "42781 · 17" => {
                 Some(text.pos + text.galley.rect.center().to_vec2())
             }
             _ => None,
