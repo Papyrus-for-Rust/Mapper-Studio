@@ -442,7 +442,7 @@ impl Studio {
                 let ready_hint = readiness.as_ref().err().map(|error| error.message());
                 let mut run = ui.add_enabled(
                     can_queue && run_blocker.is_none(),
-                    egui::Button::new(format!("Run now · {name}"))
+                    egui::Button::new(format!("Generate · {name}"))
                         .shortcut_text(ctx.format_shortcut(&egui::KeyboardShortcut::new(command, egui::Key::Enter))),
                 );
                 let mut queue = ui.add_enabled(can_queue, egui::Button::new(format!("Queue · {name}")));

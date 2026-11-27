@@ -1869,7 +1869,7 @@ impl Studio {
             let background = ui.painter().add(egui::Shape::Noop);
             let muted_light = !run_blue && !ui.visuals().dark_mode;
             let label_color = if muted_light { ui.visuals().weak_text_color() } else { Color32::WHITE };
-            let run_button = egui::Button::new(egui::RichText::new("Run now").strong().color(label_color))
+            let run_button = egui::Button::new(egui::RichText::new("Generate").strong().color(label_color))
                 .min_size(egui::vec2(run_width, HEIGHT))
                 .truncate()
                 .frame(!run_blue)
@@ -1948,13 +1948,52 @@ impl Studio {
         if run.clicked() {
             self.generate_recipe_for(id, Submission::Run, ui.ctx());
         }
+        let screen = ui.ctx().content_rect();
+        let popup_width = (screen.width() - 16.).clamp(120., 364.);
+        let trigger = batch.rect.center().x;
+        let anchor = Rect::from_min_size(
+            egui::pos2(trigger - popup_width * 0.27, batch.rect.top()),
+            egui::vec2(popup_width, batch.rect.height()),
+        );
+        let popup_frame = egui::Frame::popup(ui.style())
+            .inner_margin(egui::Margin::symmetric(20, 14))
+            .corner_radius(12)
+            .stroke(egui::Stroke::new(
+                1.,
+                ui.visuals().weak_text_color().lerp_to_gamma(ui.visuals().window_fill, 0.57),
+            ));
         let popup = egui::Popup::menu(&batch)
-            .anchor(run.rect.union(batch.rect))
+            .anchor(anchor)
             .align(egui::RectAlign::TOP_START)
+            .align_alternatives(&[])
+            .gap(22.)
+            .width(popup_width)
+            .frame(popup_frame)
             .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
         let popup_id = popup.get_id();
         if batch_enabled {
-            popup.show(|ui| self.batch_menu(ui, id));
+            if let Some(open) = popup.show(|ui| {
+                self.batch_menu(ui, id, popup_width - popup_frame.total_margin().sum().x)
+            }) {
+                let rect = open.response.rect;
+                let x = trigger.clamp(rect.left() + 34., rect.right() - 34.);
+                let top = rect.bottom();
+                if top + 17. <= batch.rect.top() {
+                    let painter = ui.ctx().layer_painter(open.response.layer_id);
+                    let left = egui::pos2(x - 22., top - 1.5);
+                    let tip = egui::pos2(x, top + 17.);
+                    let right = egui::pos2(x + 22., top - 1.5);
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![left, tip, right],
+                        popup_frame.fill,
+                        egui::Stroke::NONE,
+                    ));
+                    painter.add(egui::Shape::line(
+                        vec![left + egui::vec2(1.8, 1.5), tip, right + egui::vec2(-1.8, 1.5)],
+                        popup_frame.stroke,
+                    ));
+                }
+            }
         } else {
             egui::Popup::close_id(ui.ctx(), popup_id);
         }
@@ -1972,45 +2011,121 @@ impl Studio {
         ));
     }
 
-    fn batch_menu(&mut self, ui: &mut egui::Ui, id: u64) {
-        let width = (ui.ctx().content_rect().width() - 24.).clamp(180., 295.);
+    fn batch_menu(&mut self, ui: &mut egui::Ui, id: u64, width: f32) {
         ui.set_width(width);
-        ui.heading("Batch generation");
-        ui.add_space(4.);
-        ui.horizontal(|ui| {
-            let label = ui.label("Maps");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let count = &mut self.generation.count;
-                if ui.add_enabled(*count < MAX_BATCH, egui::Button::new("+")).on_hover_text("Add one map").clicked() {
-                    *count += 1;
-                }
-                ui.add(egui::DragValue::new(count).range(1..=MAX_BATCH)).labelled_by(label.id);
-                if ui.add_enabled(*count > 1, egui::Button::new("−")).on_hover_text("Remove one map").clicked() {
+        ui.spacing_mut().item_spacing.y = 7.;
+        ui.spacing_mut().interact_size.y = 30.;
+        for text_style in [egui::TextStyle::Body, egui::TextStyle::Button] {
+            ui.style_mut().text_styles.insert(text_style, egui::FontId::proportional(15.));
+        }
+        let compact = width < 275.;
+        let control_width = if compact { width } else { 170. };
+
+        ui.label(egui::RichText::new("Batch generation").size(18.).strong());
+        ui.add_space(7.);
+        let count = &mut self.generation.count;
+        let mut stepper = |ui: &mut egui::Ui, label: egui::Id| {
+            let fill = ui.visuals().widgets.inactive.weak_bg_fill;
+            let stroke = ui.visuals().widgets.inactive.bg_stroke;
+            egui::Frame::new().fill(fill).stroke(stroke).corner_radius(8).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.x = 0.;
+                let step_w = (control_width * 0.24).min(36.);
+                let minus = egui::Button::new("−")
+                    .frame_when_inactive(false)
+                    .corner_radius(egui::CornerRadius { nw: 7, sw: 7, ne: 0, se: 0 })
+                    .min_size(egui::vec2(step_w, 30.));
+                if ui.add_enabled(*count > 1, minus).on_hover_text("Remove one map").clicked() {
                     *count -= 1;
                 }
+                ui.scope(|ui| {
+                    let visuals = ui.visuals_mut();
+                    let value_fill = visuals.extreme_bg_color;
+                    for widget in [&mut visuals.widgets.inactive, &mut visuals.widgets.hovered, &mut visuals.widgets.active] {
+                        widget.corner_radius = egui::CornerRadius::ZERO;
+                        widget.weak_bg_fill = value_fill;
+                    }
+                    ui.add_sized(
+                        [control_width - step_w * 2. - stroke.width * 2., 30.],
+                        egui::DragValue::new(count).range(1..=MAX_BATCH),
+                    ).labelled_by(label);
+                });
+                let plus = egui::Button::new("+")
+                    .frame_when_inactive(false)
+                    .corner_radius(egui::CornerRadius { nw: 0, sw: 0, ne: 7, se: 7 })
+                    .min_size(egui::vec2(step_w, 30.));
+                if ui.add_enabled(*count < MAX_BATCH, plus).on_hover_text("Add one map").clicked() {
+                    *count += 1;
+                }
             });
-        });
+        };
+        if compact {
+            let label = ui.label("Maps");
+            ui.horizontal(|ui| stepper(ui, label.id));
+        } else {
+            ui.horizontal(|ui| {
+                let label = ui.label("Maps");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        stepper(ui, label.id);
+                    });
+                });
+            });
+        }
+
         let seed_mode = ui.id().with("batch-random-master");
         let mut random_master = ui.data(|data| data.get_temp::<bool>(seed_mode)).unwrap_or(true);
-        ui.horizontal(|ui| {
-            ui.label("Seed variation");
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                egui::ComboBox::from_id_salt("batch-seed-mode")
-                    .selected_text(if random_master { "Master seed" } else { "Selected stages" })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut random_master, true, "Master seed");
-                        ui.selectable_value(&mut random_master, false, "Selected stages");
-                    });
+        let mut seed_combo = |ui: &mut egui::Ui, label: egui::Id| {
+            egui::ComboBox::from_id_salt("batch-seed-mode")
+                .width(control_width)
+                .selected_text(if random_master { "Master seed" } else { "Selected stages" })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut random_master, true, "Master seed");
+                    ui.selectable_value(&mut random_master, false, "Selected stages");
+                })
+                .response.labelled_by(label);
+        };
+        if compact {
+            let label = ui.label("Seed variation");
+            seed_combo(ui, label.id);
+        } else {
+            ui.horizontal(|ui| {
+                let label = ui.label("Seed variation");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    seed_combo(ui, label.id);
+                });
             });
-        });
+        }
         ui.data_mut(|data| data.insert_temp(seed_mode, random_master));
         let available = available_seed_domains(self.recipe_by_id(id));
+        ui.add_space(2.);
         egui::CollapsingHeader::new("Vary stage seeds")
             .default_open(!random_master)
+            .icon(|ui, open, response| {
+                let rect = response.rect.shrink(3.);
+                let visuals = ui.style().interact(response);
+                ui.painter().rect_filled(rect, 5, ui.visuals().faint_bg_color);
+                let points = [egui::vec2(-2., -4.), egui::vec2(2., 0.), egui::vec2(-2., 4.)];
+                let rotate = egui::emath::Rot2::from_angle(open * std::f32::consts::FRAC_PI_2);
+                ui.painter().add(egui::Shape::line(
+                    points.into_iter().map(|point| rect.center() + rotate * point).collect(),
+                    egui::Stroke::new(1.3, visuals.fg_stroke.color),
+                ));
+            })
             .show(ui, |ui| {
-                for (i, name) in DOMAINS.iter().enumerate() {
-                    ui.add_enabled(available[i], egui::Checkbox::new(&mut self.generation.randomize[i], *name))
-                        .on_hover_text("Choose a separate seed for this stage in each map.");
+                ui.spacing_mut().interact_size.y = 22.;
+                ui.spacing_mut().item_spacing.y = 4.;
+                let mut show_stages = |ui: &mut egui::Ui| {
+                    for (i, name) in DOMAINS.iter().enumerate() {
+                        ui.add_enabled(available[i], egui::Checkbox::new(&mut self.generation.randomize[i], *name))
+                            .on_hover_text("Choose a separate seed for this stage in each map.");
+                    }
+                };
+                let available_height = (ui.ctx().content_rect().height() - 300.).max(55.);
+                let stages_height = DOMAINS.len() as f32 * 26.;
+                if available_height < stages_height {
+                    egui::ScrollArea::vertical().max_height(available_height).show(ui, show_stages);
+                } else {
+                    show_stages(ui);
                 }
             });
 
@@ -2021,6 +2136,7 @@ impl Studio {
         let can_queue = count <= slots && has_variation;
         let run_blocker = self.run_blocker();
         let can_run = can_queue && run_blocker.is_none();
+        ui.add_space(5.);
         ui.separator();
         if count > slots {
             let label = match slots {
@@ -2032,16 +2148,18 @@ impl Studio {
         } else if !has_variation {
             ui.label(NO_SEED_VARIATION);
         }
+        ui.add_space(3.);
         let submission = ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 10.;
             let button_width = ((ui.available_width() - ui.spacing().item_spacing.x) / 2.).max(0.);
-            let size = egui::vec2(button_width, 30.);
-            let queue = ui.add_enabled(can_queue, egui::Button::new(format!("Queue {count}")).min_size(size))
+            let size = egui::vec2(button_width, 40.);
+            let queue = ui.add_enabled(can_queue, egui::Button::new(format!("Queue {count}")).min_size(size).corner_radius(8).stroke(ui.visuals().window_stroke))
                 .on_hover_text("Add the whole batch to the normal queue.");
             let mut button = egui::Button::new(if can_run {
                 egui::RichText::new(format!("Run {count}")).color(Color32::WHITE)
             } else {
                 egui::RichText::new(format!("Run {count}"))
-            }).min_size(size);
+            }).min_size(size).corner_radius(8);
             if can_run {
                 button = button.fill(workbench_style::PRIMARY_ACTION);
             }
@@ -4803,7 +4921,7 @@ mod tests {
             textures.update(&frame.textures_delta);
             frame.textures_delta.clear();
             let labels = frame.shapes.iter().filter_map(|shape| match &shape.shape {
-                egui::Shape::Text(text) if text.galley.job.text == "Run now" => Some(text.pos.x),
+                egui::Shape::Text(text) if text.galley.job.text == "Generate" => Some(text.pos.x),
                 _ => None,
             }).collect::<Vec<_>>();
             if let [first, second] = labels.as_slice() {
@@ -6852,7 +6970,7 @@ mod tests {
             render(app, vec![])
         };
         let frame = render(&mut app, vec![]);
-        let generate = text_rect(&frame, "Run now").unwrap().center();
+        let generate = text_rect(&frame, "Generate").unwrap().center();
         let split_button = frame.shapes.iter().find_map(|shape| match &shape.shape {
             egui::Shape::Rect(rect) if rect.brush.is_some() && rect.rect.contains(generate) => Some(rect.rect),
             _ => None,
@@ -6991,7 +7109,7 @@ mod tests {
 
         frame.textures_delta.clear();
         let text = frame.shapes.iter().find_map(|shape| match &shape.shape {
-            egui::Shape::Text(text) if text.galley.job.text == "Run now" => Some(text),
+            egui::Shape::Text(text) if text.galley.job.text == "Generate" => Some(text),
             _ => None,
         }).expect("disabled Generate label is painted");
         let colors = &ctx.style_of(egui::Theme::Light).visuals;
@@ -7083,7 +7201,7 @@ mod tests {
                 assert!(!output.shapes.iter().any(
                     |s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.job.text == "Ready")
                 ));
-                let action = "Run now";
+                let action = "Generate";
                 assert!(output.shapes.iter().any(
                     |s| matches!(&s.shape,egui::Shape::Text(t) if t.galley.job.text == action)
                 ));
