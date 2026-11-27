@@ -474,7 +474,7 @@ impl CompositionPanel {
             let live = Arc::new(Mutex::new(None));
             let live_sink = live.clone();
             let live_enabled = self.live_enabled.clone();
-            std::thread::spawn(move || {
+            std::thread::spawn(mapper_studio::generation_resources::job_worker(move || {
                 let _identities = mapper_studio::prefab_identities::Scope::with_prepared(
                     bindings.installation_root(), &catalog, identities.as_deref(),
                 );
@@ -577,7 +577,7 @@ impl CompositionPanel {
                 drop(progress);
                 let _ = sender.send(result);
                 repaint.request_repaint();
-            });
+            }));
             self.task = Some(Task {
                 key,
                 palette,

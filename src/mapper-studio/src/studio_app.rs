@@ -98,6 +98,7 @@ enum Action {
     New,
     Open,
     AcceptOpened,
+    Restart,
     Close,
 }
 #[derive(Clone)]
@@ -497,6 +498,11 @@ impl Studio {
     }
 
     fn request_preview(&mut self, ctx: &egui::Context, reuse_render: bool) {
+        let budget = self.generation.primary_budget();
+        mapper_studio::generation_resources::with_job_budget(budget, || self.start_preview(ctx, reuse_render));
+    }
+
+    fn start_preview(&mut self, ctx: &egui::Context, reuse_render: bool) {
         if !self.generation.busy() {
             let catalog = self.prefabs.catalog(&self.project);
             if let Err(error) = self.monuments.refresh_saved_roster(&mut self.project, catalog.as_deref()) {
@@ -598,6 +604,14 @@ impl Studio {
         }
     }
     fn start_placement(&mut self, ctx: &egui::Context) {
+        let budget = self.generation.primary_budget();
+        mapper_studio::generation_resources::with_job_budget(budget, || self.request_placement(ctx));
+    }
+
+    fn request_placement(&mut self, ctx: &egui::Context) {
+        if self.generation.primary_waiting() {
+            return;
+        }
         if self.queue_primary_paused() {
             self.generation.defer_queue_placement();
             return;
@@ -1049,6 +1063,11 @@ impl Studio {
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
+            Action::Restart => {
+                if self.updates.restart(self.path.as_deref()) {
+                    self.perform(Action::Close, ctx);
+                }
+            }
             Action::New => self.replace_project(Self::new_workbench_project(), None),
             Action::AcceptOpened => self.accept_opened_project(),
             Action::Open => {
@@ -1069,7 +1088,7 @@ impl Studio {
         self.project_io.clear_issue();
         self.plugins.cancel();
         self.cancel_generation();
-        self.generation = Default::default();
+        self.generation.replace_preserving_worker_budgets(Default::default());
         self.project_io.saved_generation = 0;
         self.project_io.saved_recipes = 0;
         self.recipe_tabs = Default::default();
@@ -1153,6 +1172,11 @@ impl Studio {
         }
     }
     fn refresh_map_colors(&mut self, ctx:&egui::Context) {
+        let budget = self.generation.primary_budget();
+        mapper_studio::generation_resources::with_job_budget(budget, || self.refresh_budgeted_map_colors(ctx));
+    }
+
+    fn refresh_budgeted_map_colors(&mut self, ctx: &egui::Context) {
         let clean=self.preview.as_ref().and_then(|p|p.native_layers.as_ref().zip(p.palette.as_ref()).map(|(l,palette)|(color_panel::Base::Native(l.clone(),p.ocean.clone()),palette.clone())));
         self.map_colors.tick_with_clean(self.map_color_source(),clean,&self.preferences.map_colors,ctx);
     }
@@ -2554,9 +2578,11 @@ impl eframe::App for Studio {
                 .and_then(|root| self.prefabs.prepared_identities(&self.project, root)),
             road_layout: self.generation.active_edit_road_layout(),
         };
-        if !self.queue_primary_paused() && self
-            .composition
-            .tick(&self.project, composition_inputs, &ctx)
+        let budget = self.generation.primary_budget();
+        if !self.queue_primary_paused() && !self.generation.primary_waiting()
+            && mapper_studio::generation_resources::with_job_budget(budget, || {
+            self.composition.tick(&self.project, composition_inputs, &ctx)
+        })
         {
             self.layer_texture = None;
             self.publish_composed_layout();
@@ -2650,9 +2676,16 @@ impl eframe::App for Studio {
         self.recipe_tabs.rename_window(&ctx);
         self.settings_window(&ctx);
         self.support_snapshot_window(&ctx);
-        let can_restart = self.updates.awaiting_restart() && !self.dirty() && !self.generation_in_progress()
-            && !self.project_io.busy() && self.pending.is_none();
-        self.updates.show(&ctx, self.path.as_deref(), can_restart);
+        let restart_blocker = if self.generation_in_progress() {
+            Some("Finish or cancel generation before restarting.")
+        } else if self.project_io.busy() || self.pending.is_some() {
+            Some("Finish the current project action before restarting.")
+        } else {
+            None
+        };
+        if self.updates.show(&ctx, restart_blocker) {
+            self.request(Action::Restart, &ctx);
+        }
         self.export_options(&ctx);
         self.handle_ui_scale_shortcuts(&ctx);
         self.persist_preferences();
@@ -2694,9 +2727,12 @@ fn main() -> eframe::Result {
             Err(error) => eprintln!("Could not open the selected Mapper update. {error}"),
         }
     }
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/branding/papyrus.png"))
+        .expect("bundled Papyrus icon is a valid PNG");
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Mapper for Rust")
+            .with_icon(icon)
             .with_inner_size([1440., 940.])
             .with_min_inner_size([1050., 720.]),
         renderer: eframe::Renderer::Wgpu,
@@ -4855,6 +4891,19 @@ mod tests {
         app.request(Action::New, &ctx);
         assert!(app.pending.is_none());
         assert!(!app.dirty());
+    }
+
+    #[test]
+    fn restarting_for_update_prompts_for_unsaved_project_changes() {
+        let ctx = egui::Context::default();
+        let mut app = fixture(&ctx);
+        app.project.size = 3000;
+        assert!(app.dirty());
+
+        app.request(Action::Restart, &ctx);
+
+        assert!(matches!(app.pending, Some(Action::Restart)));
+        assert!(!app.allow_close);
     }
 
     #[test]

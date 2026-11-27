@@ -107,10 +107,10 @@ pub(super) fn start_worker<T: Send + 'static>(
     let worker_ctx = ctx.clone();
     if let Err(error) = std::thread::Builder::new()
         .name(name.to_owned())
-        .spawn(move || {
+        .spawn(mapper_studio::generation_resources::job_worker(move || {
             let _ = worker_sender.send(work(&worker_ctx));
             worker_ctx.request_repaint();
-        })
+        }))
     {
         let _ = sender.send(Err(format!("Could not start worker: {error}")));
         ctx.request_repaint();

@@ -229,13 +229,13 @@ impl Studio {
         let signal = cancel.clone();
         let (sender, receiver) = mpsc::channel();
         let repaint = ctx.clone();
-        std::thread::spawn(move || {
+        std::thread::spawn(mapper_studio::generation_resources::job_worker(move || {
             let result = mapper_studio::image_export::retain_overview(&image, || {
                 signal.load(Ordering::Relaxed)
             }).map(|file| file.map(Arc::new));
             let _ = sender.send(result);
             repaint.request_repaint();
-        });
+        }));
         self.generation.overview = Some(OverviewTask {
             key,
             cancel,

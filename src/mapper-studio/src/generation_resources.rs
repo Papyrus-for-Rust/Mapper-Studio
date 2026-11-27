@@ -1,7 +1,10 @@
 //! Machine-local execution policy. Never part of a portable recipe or seed.
 use rayon::ThreadPool;
 use serde::{Deserialize, Serialize};
-use std::sync::{Mutex, OnceLock, RwLock};
+use std::{
+    cell::RefCell,
+    sync::{Arc, Mutex, OnceLock, RwLock},
+};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -15,6 +18,9 @@ pub enum ImageCompute {
 #[serde(default, deny_unknown_fields)]
 pub struct Limits {
     pub cpu_workers: usize,
+    /// None leaves admission to the CPU and terrain-memory budgets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub concurrent_maps: Option<usize>,
     /// Aggregate live image job allocations, not the entire application's RAM.
     pub image_memory_mib: usize,
     pub terrain_memory_mib: usize,
@@ -25,6 +31,7 @@ impl Default for Limits {
     fn default() -> Self {
         Self {
             cpu_workers: available_workers().div_ceil(2),
+            concurrent_maps: None,
             image_memory_mib: 512,
             terrain_memory_mib: 2048,
             gpu_memory_mib: 256,
@@ -37,7 +44,8 @@ pub fn available_workers() -> usize {
 }
 impl Limits {
     pub fn validate(&self) -> Result<(), String> {
-        if !(1..=1024).contains(&self.cpu_workers)
+        if self.concurrent_maps.is_some_and(|limit| !(1..=crate::generation_plan::MAX_BATCH).contains(&limit))
+            || !(1..=1024).contains(&self.cpu_workers)
             || !(16..=4096).contains(&self.image_memory_mib)
             || !(256..=16384).contains(&self.terrain_memory_mib)
             || !(32..=2048).contains(&self.gpu_memory_mib)
@@ -61,11 +69,56 @@ fn unconfigured_limits() -> Limits {
         ..Limits::default()
     }
 }
+/// Holds an admitted map's managed terrain allowance until its workers exit.
+#[derive(Clone, Debug)]
+pub struct JobBudget(Arc<usize>);
+
+thread_local! {
+    static JOB_BUDGET: RefCell<Option<JobBudget>> = const { RefCell::new(None) };
+}
+
+impl JobBudget {
+    pub fn new(terrain_mib: usize) -> Self {
+        Self(Arc::new(terrain_mib))
+    }
+
+    pub fn terrain_mib(&self) -> usize {
+        *self.0
+    }
+
+    pub fn has_workers(&self) -> bool {
+        Arc::strong_count(&self.0) > 1
+    }
+}
+
+pub fn with_job_budget<T>(budget: Option<JobBudget>, work: impl FnOnce() -> T) -> T {
+    struct Restore(Option<JobBudget>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            JOB_BUDGET.replace(self.0.take());
+        }
+    }
+    let _restore = Restore(JOB_BUDGET.replace(budget));
+    work()
+}
+
+/// Carry the submitting map's allowance into an asynchronous stage.
+pub fn job_worker<T>(work: impl FnOnce() -> T) -> impl FnOnce() -> T {
+    let budget = JOB_BUDGET.with(|slot| slot.borrow().clone());
+    move || with_job_budget(budget, work)
+}
+
 pub fn current() -> Limits {
-    *LIMITS
+    let mut limits = *LIMITS
         .get_or_init(|| RwLock::new(unconfigured_limits()))
         .read()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(|e| e.into_inner());
+    JOB_BUDGET.with(|slot| {
+        if let Some(budget) = slot.borrow().as_ref() {
+            limits.terrain_memory_mib = budget.terrain_mib();
+        }
+    });
+    limits
 }
 pub fn configure(limits: Limits) -> Result<(), String> {
     limits.validate()?;

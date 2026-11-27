@@ -337,10 +337,23 @@ impl Studio {
         preference_section(ui, "CPU & memory");
         let before = self.preferences.generation_resources;
         let limits = &mut self.preferences.generation_resources;
+        preference_row(ui, "Concurrent maps", |ui, label| {
+            let current = limits.concurrent_maps.map_or_else(|| "Uncapped".into(), |n| n.to_string());
+            egui::ComboBox::from_id_salt(label)
+                .selected_text(current)
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut limits.concurrent_maps, None, "Uncapped");
+                    for count in 1..=mapper_studio::generation_plan::MAX_BATCH {
+                        ui.selectable_value(&mut limits.concurrent_maps, Some(count), count.to_string());
+                    }
+                })
+                .response.labelled_by(label)
+                .on_hover_text("Uncapped uses the CPU worker and terrain-memory budgets to decide when maps can start.");
+        });
         limit_row(ui, "CPU workers", &mut limits.cpu_workers, 1..=generation_resources::available_workers(),
             "Maximum workers for terrain and map images. Native libraries manage their own threads. Applies to the next job.");
         limit_row(ui, "Terrain memory (MiB)", &mut limits.terrain_memory_mib, 256..=16384,
-            "Maximum terrain-processing buffers for the next generation job.");
+            "Shared terrain workspace budget for concurrent maps. Applies to new work.");
         limit_row(ui, "Image memory (MiB)", &mut limits.image_memory_mib, 16..=4096,
             "Maximum image-job buffers. Native library allocations are managed separately.");
 
@@ -366,8 +379,8 @@ impl Studio {
             self.with_recipe_draft(|studio| {
                 let comparison = &mut studio.erosion_comparison;
                 comparison.sync(studio.project.size, limits);
-                comparison.action(ui, busy);
                 comparison.result(ui, &mut studio.project);
+                comparison.action(ui, busy);
                 if let Some(required) = comparison.required_gpu_memory(limits) {
                     ui.colored_label(ui.visuals().warn_fg_color, format!("GPU needs {required} MiB"))
                         .on_hover_text("Raise GPU buffers to run the GPU comparison.");

@@ -50,8 +50,17 @@ impl Panel {
             .map(|channel| channel.version.as_str())
     }
 
-    pub fn awaiting_restart(&self) -> bool {
-        self.prepared.is_some()
+    pub fn restart(&mut self, project: Option<&Path>) -> bool {
+        let Some(prepared) = &mut self.prepared else {
+            return false;
+        };
+        match prepared.restart(project) {
+            Ok(()) => true,
+            Err(error) => {
+                self.message = error;
+                false
+            }
+        }
     }
 
     pub fn check(&mut self, ctx: &egui::Context, manual: bool) {
@@ -96,7 +105,7 @@ impl Panel {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, project: Option<&Path>, can_restart: bool) {
+    pub fn show(&mut self, ctx: &egui::Context, restart_blocker: Option<&str>) -> bool {
         if let Some(task) = &self.task {
             let received = match task.result.try_recv() {
                 Ok(value) => Some(value),
@@ -117,8 +126,9 @@ impl Panel {
             }
         }
         if !self.open {
-            return;
+            return false;
         }
+        let mut restart = false;
         let mut open = true;
         egui::Window::new("Mapper updates")
             .open(&mut open)
@@ -135,19 +145,13 @@ impl Panel {
                         self.task = None;
                         self.message = "Update cancelled.".into();
                     }
-                } else if let Some(prepared) = &mut self.prepared {
+                } else if let Some(prepared) = &self.prepared {
                     ui.label(format!("Mapper {} is ready.", prepared.version()));
-                    if ui
-                        .add_enabled(can_restart, egui::Button::new("Restart Mapper"))
-                        .on_disabled_hover_text(
-                            "Save your work and finish generation before restarting.",
-                        )
-                        .clicked()
-                    {
-                        match prepared.restart(project) {
-                            Ok(()) => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
-                            Err(error) => self.message = error,
-                        }
+                    restart = ui
+                        .add_enabled(restart_blocker.is_none(), egui::Button::new("Restart Mapper"))
+                        .clicked();
+                    if let Some(reason) = restart_blocker {
+                        ui.label(reason);
                     }
                 } else if let Some(release) = &self.release {
                     ui.label(format!("Mapper {} is available.", release.version));
@@ -175,5 +179,6 @@ impl Panel {
             self.prepared = None;
             self.message.clear();
         }
+        restart && open
     }
 }
