@@ -171,11 +171,11 @@ impl Panel {
         let signal = cancel.clone();
         let (sender, receiver) = mpsc::channel();
         let repaint = ctx.clone();
-        if let Err(error) = std::thread::Builder::new().name("mapper-map-archive".into()).spawn(move || {
+        if let Err(error) = std::thread::Builder::new().name("mapper-map-archive".into()).spawn(mapper_studio::generation_resources::job_worker(move || {
             let result = build_archive(&project, &maps, &solution, &assets, &signal);
             let _ = sender.send(result);
             repaint.request_repaint();
-        }) {
+        })) {
             let result = Err(format!("Could not start map archive worker. {error}"));
             self.ready = Some((key, result.clone()));
             return Some(result);

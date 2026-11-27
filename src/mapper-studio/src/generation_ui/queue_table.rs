@@ -625,9 +625,9 @@ impl Studio {
                     }
                     let caption = match item.state {
                         State::Running if paused => self.queue_pause_caption(item.id),
-                        State::Running => "Running",
-                        State::Waiting if next == Some(item.id) => "Next",
-                        State::Waiting => "Queued",
+                        State::Running => self.queue_wait_caption(item.id).unwrap_or("Running"),
+                        State::Waiting => self.queue_wait_caption(item.id)
+                            .unwrap_or(if next == Some(item.id) { "Next" } else { "Queued" }),
                         State::Ready => "Ready",
                         State::Incomplete => "Incomplete",
                         State::Failed => "Failed",
@@ -651,7 +651,7 @@ impl Studio {
                         &mut child,
                         columns.status - 10.,
                         egui::RichText::new(caption).color(fg),
-                    );
+                    ).on_hover_text(caption);
                     if columns.stage > 0. {
                         let detail = match item.state {
                             State::Running if active == Some(item.id) => stage.clone(),

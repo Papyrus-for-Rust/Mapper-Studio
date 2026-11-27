@@ -254,7 +254,7 @@ impl Studio {
         self.replace_project(opened.recipe, Some(opened.path));
         self.recipe_tabs.book = opened.recipes;
         self.recipe_tabs.rebuild_tabs(&mut self.dock);
-        self.generation = opened.generation;
+        self.generation.replace_preserving_worker_budgets(opened.generation);
         self.generation.sync_restrictions(&self.restrictions);
         if let Some(font) = self.monument_icons.labels.source(self.project.installation.as_ref()) {
             self.generation.sync_map_font(&font);

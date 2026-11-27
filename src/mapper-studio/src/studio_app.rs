@@ -498,6 +498,11 @@ impl Studio {
     }
 
     fn request_preview(&mut self, ctx: &egui::Context, reuse_render: bool) {
+        let budget = self.generation.primary_budget();
+        mapper_studio::generation_resources::with_job_budget(budget, || self.start_preview(ctx, reuse_render));
+    }
+
+    fn start_preview(&mut self, ctx: &egui::Context, reuse_render: bool) {
         if !self.generation.busy() {
             let catalog = self.prefabs.catalog(&self.project);
             if let Err(error) = self.monuments.refresh_saved_roster(&mut self.project, catalog.as_deref()) {
@@ -599,6 +604,14 @@ impl Studio {
         }
     }
     fn start_placement(&mut self, ctx: &egui::Context) {
+        let budget = self.generation.primary_budget();
+        mapper_studio::generation_resources::with_job_budget(budget, || self.request_placement(ctx));
+    }
+
+    fn request_placement(&mut self, ctx: &egui::Context) {
+        if self.generation.primary_waiting() {
+            return;
+        }
         if self.queue_primary_paused() {
             self.generation.defer_queue_placement();
             return;
@@ -1075,7 +1088,7 @@ impl Studio {
         self.project_io.clear_issue();
         self.plugins.cancel();
         self.cancel_generation();
-        self.generation = Default::default();
+        self.generation.replace_preserving_worker_budgets(Default::default());
         self.project_io.saved_generation = 0;
         self.project_io.saved_recipes = 0;
         self.recipe_tabs = Default::default();
@@ -1159,6 +1172,11 @@ impl Studio {
         }
     }
     fn refresh_map_colors(&mut self, ctx:&egui::Context) {
+        let budget = self.generation.primary_budget();
+        mapper_studio::generation_resources::with_job_budget(budget, || self.refresh_budgeted_map_colors(ctx));
+    }
+
+    fn refresh_budgeted_map_colors(&mut self, ctx: &egui::Context) {
         let clean=self.preview.as_ref().and_then(|p|p.native_layers.as_ref().zip(p.palette.as_ref()).map(|(l,palette)|(color_panel::Base::Native(l.clone(),p.ocean.clone()),palette.clone())));
         self.map_colors.tick_with_clean(self.map_color_source(),clean,&self.preferences.map_colors,ctx);
     }
@@ -2560,9 +2578,11 @@ impl eframe::App for Studio {
                 .and_then(|root| self.prefabs.prepared_identities(&self.project, root)),
             road_layout: self.generation.active_edit_road_layout(),
         };
-        if !self.queue_primary_paused() && self
-            .composition
-            .tick(&self.project, composition_inputs, &ctx)
+        let budget = self.generation.primary_budget();
+        if !self.queue_primary_paused() && !self.generation.primary_waiting()
+            && mapper_studio::generation_resources::with_job_budget(budget, || {
+            self.composition.tick(&self.project, composition_inputs, &ctx)
+        })
         {
             self.layer_texture = None;
             self.publish_composed_layout();
