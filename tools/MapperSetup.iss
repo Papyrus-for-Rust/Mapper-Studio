@@ -47,3 +47,219 @@ Name: "{autoprograms}\Mapper for Rust"; Filename: "{app}\mapper-studio.exe"; Wor
 
 [Run]
 Filename: "{app}\mapper-studio.exe"; Description: "Launch Mapper for Rust"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+const
+  MapperUninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{EAA3912B-623E-4100-A39A-A126C72EB651}_is1';
+
+var
+  MaintenancePage: TInputOptionWizardPage;
+  InstalledVersion, InstallerVersion, UninstallerPath: String;
+  InstallAction, UninstallAction: Integer;
+  InstallActionLabel: String;
+  SetupIsOlder, UninstallCompleted: Boolean;
+
+function TakeIdentifier(var Version: String; const Separator: String): String;
+var
+  Boundary: Integer;
+begin
+  Boundary := Pos(Separator, Version);
+  if Boundary = 0 then
+  begin
+    Result := Version;
+    Version := '';
+  end
+  else
+  begin
+    Result := Copy(Version, 1, Boundary - 1);
+    Delete(Version, 1, Boundary);
+  end;
+end;
+
+function IsNumericIdentifier(const Identifier: String): Boolean;
+var
+  Index: Integer;
+begin
+  Result := False;
+  if Identifier = '' then
+    Exit;
+  for Index := 1 to Length(Identifier) do
+    if (Identifier[Index] < '0') or (Identifier[Index] > '9') then
+      Exit;
+  Result := True;
+end;
+
+function CompareIdentifiers(Left, Right: String): Integer;
+var
+  LeftPart, RightPart: String;
+  LeftNumeric, RightNumeric: Boolean;
+begin
+  Result := 0;
+  while (Left <> '') and (Right <> '') do
+  begin
+    LeftPart := TakeIdentifier(Left, '.');
+    RightPart := TakeIdentifier(Right, '.');
+    LeftNumeric := IsNumericIdentifier(LeftPart);
+    RightNumeric := IsNumericIdentifier(RightPart);
+    if LeftNumeric and RightNumeric and (Length(LeftPart) <> Length(RightPart)) then
+      Result := Length(LeftPart) - Length(RightPart)
+    else if LeftNumeric <> RightNumeric then
+    begin
+      if LeftNumeric then
+        Result := -1
+      else
+        Result := 1;
+    end
+    else
+      Result := CompareStr(LeftPart, RightPart);
+    if Result <> 0 then
+      Exit;
+  end;
+  if Left <> '' then
+    Result := 1
+  else if Right <> '' then
+    Result := -1;
+end;
+
+function CompareReleaseVersions(Left, Right: String): Integer;
+var
+  LeftCore, RightCore: String;
+begin
+  { Mapper releases use SemVer without build metadata. }
+  LeftCore := TakeIdentifier(Left, '-');
+  RightCore := TakeIdentifier(Right, '-');
+  Result := CompareIdentifiers(LeftCore, RightCore);
+  if Result <> 0 then
+    Exit;
+  if (Left = '') and (Right <> '') then
+    Result := 1
+  else if (Left <> '') and (Right = '') then
+    Result := -1
+  else
+    Result := CompareIdentifiers(Left, Right);
+end;
+
+function FindUninstaller: String;
+var
+  RegisteredCommand, InstallDir, Candidate, Name, Suffix: String;
+begin
+  Result := '';
+  if not RegQueryStringValue(HKCU, MapperUninstallKey, 'InstallLocation', InstallDir) or
+     not RegQueryStringValue(HKCU, MapperUninstallKey, 'UninstallString', RegisteredCommand) then
+    Exit;
+
+  { Inno registers a quoted executable path. Run the file directly. }
+  Candidate := RemoveQuotes(RegisteredCommand);
+  Name := Lowercase(ExtractFileName(Candidate));
+  Suffix := Copy(Name, 6, Length(Name) - 9);
+  if (CompareText(ExtractFileDir(Candidate), RemoveBackslashUnlessRoot(InstallDir)) = 0) and
+     (Copy(Name, 1, 5) = 'unins') and (ExtractFileExt(Name) = '.exe') and
+     IsNumericIdentifier(Suffix) and FileExists(Candidate) then
+    Result := Candidate;
+end;
+
+procedure InitializeWizard;
+var
+  Description, Choices: String;
+  VersionOrder: Integer;
+begin
+  InstallerVersion := '{#ReleaseVersion}';
+  if not RegQueryStringValue(HKCU, MapperUninstallKey, 'DisplayVersion', InstalledVersion) or
+     (InstalledVersion = '') then
+    Exit;
+
+  UninstallerPath := FindUninstaller;
+  VersionOrder := CompareReleaseVersions(InstallerVersion, InstalledVersion);
+  SetupIsOlder := VersionOrder < 0;
+  InstallAction := -1;
+  UninstallAction := -1;
+  Description := 'Installed: ' + InstalledVersion + '    Setup: ' + InstallerVersion;
+  Choices := 'Choose an action. Your projects and settings are kept.';
+  if SetupIsOlder then
+    Choices := 'Use a newer installer to update or reinstall Mapper.'
+  else if UninstallerPath = '' then
+    Choices := 'Reinstall or update Mapper to restore its Windows uninstaller.';
+  MaintenancePage := CreateInputOptionPage(wpSelectTasks, 'Manage Mapper for Rust',
+    Description, Choices, True, False);
+
+  if not SetupIsOlder then
+  begin
+    if VersionOrder > 0 then
+      InstallActionLabel := 'Update'
+    else
+      InstallActionLabel := 'Reinstall';
+    InstallAction := MaintenancePage.Add(InstallActionLabel + ' Mapper');
+  end;
+  if UninstallerPath <> '' then
+    UninstallAction := MaintenancePage.Add('Uninstall Mapper');
+  MaintenancePage.SelectedValueIndex := InstallAction;
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if MaintenancePage <> nil then
+    Result := ((PageID = MaintenancePage.ID) and WizardSilent) or
+      ((PageID = wpReady) and not WizardSilent);
+end;
+
+procedure ShowMaintenanceAction(Sender: TObject);
+begin
+  if (InstallAction >= 0) and (MaintenancePage.SelectedValueIndex = InstallAction) then
+    WizardForm.NextButton.Caption := InstallActionLabel
+  else
+    WizardForm.NextButton.Caption := 'Uninstall';
+  WizardForm.NextButton.Enabled := MaintenancePage.SelectedValueIndex >= 0;
+end;
+
+procedure CurPageChanged(PageID: Integer);
+begin
+  if (MaintenancePage <> nil) and (PageID = MaintenancePage.ID) then
+  begin
+    MaintenancePage.CheckListBox.OnClickCheck := @ShowMaintenanceAction;
+    ShowMaintenanceAction(nil);
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if SetupIsOlder then
+    Result := 'Mapper ' + InstalledVersion + ' is already installed. Use a newer installer.';
+end;
+
+function NextButtonClick(PageID: Integer): Boolean;
+var
+  ExitCode: Integer;
+begin
+  Result := True;
+  if (MaintenancePage = nil) or (PageID <> MaintenancePage.ID) then
+    Exit;
+
+  Result := (InstallAction >= 0) and (MaintenancePage.SelectedValueIndex = InstallAction);
+  if Result or (UninstallAction < 0) or
+     (MaintenancePage.SelectedValueIndex <> UninstallAction) then
+    Exit;
+
+  WizardForm.Hide;
+  if not Exec(UninstallerPath, '', ExtractFileDir(UninstallerPath),
+      SW_SHOWNORMAL, ewWaitUntilTerminated, ExitCode) then
+  begin
+    WizardForm.Show;
+    MsgBox('Could not open the Mapper uninstaller. ' + SysErrorMessage(ExitCode), mbError, MB_OK);
+    Exit;
+  end;
+  if RegKeyExists(HKCU, MapperUninstallKey) then
+  begin
+    WizardForm.Show;
+    Exit;
+  end;
+  UninstallCompleted := True;
+  WizardForm.Close;
+end;
+
+procedure CancelButtonClick(PageID: Integer; var Cancel, Confirm: Boolean);
+begin
+  if UninstallCompleted then
+    Confirm := False;
+end;
