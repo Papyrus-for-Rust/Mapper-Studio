@@ -35,7 +35,7 @@ Build the Windows setup wizard from the same verified directory used for the ZIP
 ./tools/Build-MapperInstaller.ps1 -Directory artifacts/releases/Mapper-for-Rust-0.1.0-beta.1-win-x64
 ```
 
-Attach `Mapper-for-Rust-0.1.0-beta.1-Setup-win-x64.exe` and its checksum to the same release. New users can run the setup wizard to install for their Windows account, add a Start menu shortcut, and uninstall through Windows Settings. Keep publishing the ZIP and its checksum for in-app updates. The installer uses the same update channel and leaves projects and preferences in place.
+Attach `Mapper-for-Rust-0.1.0-beta.1-Setup-win-x64.exe` and its checksum to the same release. Open the setup executable and choose **Install**. Setup includes the runtime and adds Mapper to the Start menu for the current Windows account. Use Windows Settings to uninstall. For unattended installs, pass `/SILENT /NORESTART`. Keep publishing the ZIP and its checksum for in-app updates. The installer uses the same update channel and leaves projects and preferences in place.
 
 ## Check changes
 
