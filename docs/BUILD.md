@@ -37,6 +37,8 @@ Build the Windows setup wizard from the same verified directory used for the ZIP
 
 Attach `Mapper-for-Rust-0.1.0-beta.1-Setup-win-x64.exe` and its checksum to the same release. Open the setup executable and choose **Install**. Setup includes the runtime and adds Mapper to the Start menu for the current Windows account. Use Windows Settings to uninstall. For unattended installs, pass `/SILENT /NORESTART`. Keep publishing the ZIP and its checksum for in-app updates. The installer uses the same update channel and leaves projects and preferences in place.
 
+The installer and app share the Papyrus artwork in `src/mapper-studio/assets/branding`. After changing the SVG, regenerate the transparent PNG and multi-size ICO. Then run `rc.exe /nologo /fo papyrus.res papyrus.rc` from the branding directory using the Windows SDK resource compiler. The checked-in icon resource keeps ordinary Cargo builds independent of the resource compiler.
+
 ## Check changes
 
 ```powershell

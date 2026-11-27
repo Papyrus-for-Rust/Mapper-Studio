@@ -1,3 +1,5 @@
+#define Branding "..\src\mapper-studio\assets\branding"
+
 [Setup]
 AppId={{EAA3912B-623E-4100-A39A-A126C72EB651}
 AppName=Mapper for Rust
@@ -17,8 +19,9 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 WizardStyle=modern dynamic
-SetupIconFile=installer/mapper.ico
-WizardSmallImageFile=installer/mapper-mark.png
+SetupIconFile={#Branding}\papyrus.ico
+WizardSmallImageFile={#Branding}\papyrus.png
+WizardImageFile={#Branding}\papyrus-wizard.png
 UninstallDisplayIcon={app}\mapper.ico
 CloseApplications=yes
 RestartApplications=no
@@ -37,7 +40,7 @@ FinishedLabel=Open Mapper now or find it in the Start menu.
 [Files]
 Source: "{#PackageDirectory}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-Source: "installer\mapper.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Branding}\papyrus.ico"; DestDir: "{app}"; DestName: "mapper.ico"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Mapper for Rust"; Filename: "{app}\mapper-studio.exe"; WorkingDir: "{app}"; IconFilename: "{app}\mapper.ico"

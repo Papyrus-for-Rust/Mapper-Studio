@@ -2727,9 +2727,12 @@ fn main() -> eframe::Result {
             Err(error) => eprintln!("Could not open the selected Mapper update. {error}"),
         }
     }
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!("../assets/branding/papyrus.png"))
+        .expect("bundled Papyrus icon is a valid PNG");
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Mapper for Rust")
+            .with_icon(icon)
             .with_inner_size([1440., 940.])
             .with_min_inner_size([1050., 720.]),
         renderer: eframe::Renderer::Wgpu,
