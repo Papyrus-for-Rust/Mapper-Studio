@@ -438,7 +438,7 @@ impl Studio {
                 let name = self.recipe_tabs.name(self.recipe_tabs.active());
                 let can_queue = readiness.is_ok()
                     || matches!(readiness, Err(generation_ui::GenerationBlocker::MissingSeed));
-                let run_blocker = self.run_blocker(1);
+                let run_blocker = self.run_blocker();
                 let ready_hint = readiness.as_ref().err().map(|error| error.message());
                 let mut run = ui.add_enabled(
                     can_queue && run_blocker.is_none(),

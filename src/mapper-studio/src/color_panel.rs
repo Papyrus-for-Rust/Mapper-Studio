@@ -285,7 +285,7 @@ impl Panel {
                 let signal = cancel.clone();
                 let paint = ctx.clone();
                 let style = palette.clone();
-                std::thread::spawn(move || {
+                std::thread::spawn(mapper_studio::generation_resources::job_worker(move || {
                     let _loading =
                         mapper_studio::loading_progress::begin("Terrain colors", Some(signal.clone()));
                     let result = base.render(&style, &signal);
@@ -323,7 +323,7 @@ impl Panel {
                     });
                     let _ = sender.send(result);
                     paint.request_repaint();
-                });
+                }));
                 self.task = Some(Task {
                     cancel,
                     receiver,

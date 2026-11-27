@@ -1,4 +1,5 @@
 use super::*;
+use mapper_studio::generation_resources::{JobBudget, Limits, with_job_budget};
 use std::sync::mpsc::{Receiver, TryRecvError};
 
 #[derive(Default)]
@@ -11,13 +12,43 @@ pub(super) struct QueueExecution {
     pub(super) start_pending: Option<bool>,
     pub(super) placement_pending: bool,
     pub(super) frozen_primary: Option<Instant>,
-    pub(super) extra: Option<Extra>,
+    pub(super) jobs: std::collections::BTreeMap<u64, Extra>,
+    pub(crate) primary_budget: Option<JobBudget>,
+    pub(crate) retiring: Vec<JobBudget>,
 }
 
-impl QueueExecution {
-    pub(super) fn extra_id(&self) -> Option<u64> {
-        self.extra.as_ref().map(|job| job.id)
+// Reserve working terrain layers, temporary copies, and space for a preview.
+fn terrain_reservation(recipe: &Project) -> usize {
+    const MIB: usize = 1024 * 1024;
+    let Ok((height, surface)) = papyrus_terrain::native_layers::dimensions(recipe.size) else {
+        return 64;
+    };
+    if !mapper_studio::native_preview::is_native(&recipe.preview_engine) {
+        return 64;
     }
+    let layers = height * height * 2 + surface * surface * (5 + 8 + 4);
+    let erosion = layers + height * height * (44 + 4);
+    (4 * layers).max(erosion).div_ceil(MIB) + 128
+}
+
+fn admission_blocker(
+    limits: Limits,
+    active_mib: impl Iterator<Item = usize>,
+    request_mib: usize,
+) -> Option<&'static str> {
+    let (active, memory) = active_mib.fold((0, 0usize), |(count, sum), bytes| (count + 1, sum + bytes));
+    if limits.concurrent_maps.is_some_and(|maximum| active >= maximum) {
+        return Some("Waiting for a generation slot");
+    }
+    if active >= limits.effective_workers() {
+        return Some("Waiting for CPU workers");
+    }
+    // A job that needs the whole budget runs on its own. Its generation
+    // stages still enforce their existing allocation limits.
+    if active != 0 && memory.saturating_add(request_mib) > limits.terrain_memory_mib {
+        return Some("Waiting for terrain memory");
+    }
+    None
 }
 
 impl Generation {
@@ -39,6 +70,7 @@ type OverviewResult = Result<Option<Overview>, String>;
 
 pub(super) struct Extra {
     id: u64,
+    budget: JobBudget,
     project: Project,
     assets: Assets,
     started: Instant,
@@ -363,9 +395,8 @@ impl Studio {
         }
         self.generation
             .execution
-            .extra
-            .as_ref()
-            .is_some_and(|job| job.id == id && (self.generation.queue_paused || job.paused))
+            .jobs.get(&id)
+            .is_some_and(|job| self.generation.queue_paused || job.paused)
     }
 
     pub(super) fn queue_pause_caption(&self, id: u64) -> &'static str {
@@ -374,9 +405,8 @@ impl Studio {
         } else {
             self.generation
                 .execution
-                .extra
-                .as_ref()
-                .is_some_and(|job| job.id == id && job.frozen.is_some())
+                .jobs.get(&id)
+            .is_some_and(|job| job.frozen.is_some())
         };
         if frozen { "Paused" } else { "Pausing…" }
     }
@@ -385,9 +415,7 @@ impl Studio {
         if let Some(job) = self
             .generation
             .execution
-            .extra
-            .as_ref()
-            .filter(|job| job.id == id)
+            .jobs.get(&id)
         {
             return Some(job.elapsed());
         }
@@ -409,9 +437,7 @@ impl Studio {
         let Some(job) = self
             .generation
             .execution
-            .extra
-            .as_ref()
-            .filter(|job| job.id == id)
+            .jobs.get(&id)
         else {
             return ("Preparing map".into(), None);
         };
@@ -424,40 +450,85 @@ impl Studio {
     pub(super) fn extra_live_texture(&self, id: u64) -> Option<&egui::TextureHandle> {
         self.generation
             .execution
-            .extra
-            .as_ref()
-            .filter(|job| job.id == id)
+            .jobs.get(&id)
             .and_then(|job| job.live.as_ref())
     }
 
-    pub(super) fn primary_waits_for_extra(&self) -> bool {
-        self.generation.execution.extra.is_some()
-            && self.preferences.generation_resources.effective_workers() < 2
+    fn capacity_blocker(&self, recipe: &Project, include_primary: bool) -> Option<&'static str> {
+        let execution = &self.generation.execution;
+        let primary = execution.primary_budget.as_ref().filter(|_| include_primary);
+        admission_blocker(
+            self.preferences.generation_resources,
+            execution.jobs.values().map(|job| &job.budget)
+                .chain(execution.retiring.iter().filter(|budget| budget.has_workers()))
+                .chain(primary)
+                .map(JobBudget::terrain_mib),
+            self.reserve_terrain(recipe),
+        )
     }
 
-    fn extra_lane_available(&self) -> bool {
-        !self.generation.queue_paused
-            && self.generation.execution.extra.is_none()
-            && self.preferences.generation_resources.effective_workers() >= 2
-    }
-
-    pub(crate) fn run_blocker(&self, count: usize) -> Option<&'static str> {
-        if self.generation.queue_paused {
-            return Some("Resume the queue before starting maps.");
-        }
-        let slot_available = if self.generation.busy() {
-            self.extra_lane_available()
+    fn reserve_terrain(&self, recipe: &Project) -> usize {
+        let available = self.preferences.generation_resources.terrain_memory_mib;
+        // A custom graph can have an arbitrary number of live terrain buffers.
+        if recipe.terrain_graph.is_some() {
+            available
         } else {
-            !self.primary_waits_for_extra()
-        };
-        (count == 1 && !slot_available).then_some("No generation slot is available. Use Queue to add this map.")
+            terrain_reservation(recipe).min(available)
+        }
+    }
+
+    pub(super) fn reserve_primary_budget(&mut self) {
+        self.generation.execution.primary_budget = Some(JobBudget::new(self.reserve_terrain(&self.project)));
+    }
+
+    pub(super) fn retire_primary_budget(&mut self) {
+        if let Some(budget) = self.generation.execution.primary_budget.take()
+            && budget.has_workers()
+        {
+            self.generation.execution.retiring.push(budget);
+        }
+    }
+
+    pub(super) fn primary_waits_for_capacity(&self, recipe: &Project) -> bool {
+        self.capacity_blocker(recipe, false).is_some()
+    }
+
+    pub(crate) fn run_blocker(&self) -> Option<&'static str> {
+        self.generation.queue_paused.then_some("Resume the queue before starting maps.")
+    }
+
+    fn eligible_queue_job(&self, id: u64) -> bool {
+        self.generation.queue.iter().any(|job| job.id == id && job.state == State::Waiting)
+            // Applying a map edit uses the accepted route layout owned by the editor.
+            && self.generation.edits.values().all(|edit| edit.job != Some(id))
     }
 
     pub(super) fn can_start_queue_job(&self, id: u64) -> bool {
-        self.extra_lane_available()
-            && self.generation.queue.iter().any(|job| job.id == id && job.state == State::Waiting)
-            // Applying a map edit uses the accepted route layout owned by the editor.
-            && self.generation.edits.values().all(|edit| edit.job != Some(id))
+        !self.generation.queue_paused && self.eligible_queue_job(id)
+    }
+
+    pub(super) fn queue_wait_caption(&self, id: u64) -> Option<&'static str> {
+        let execution = &self.generation.execution;
+        if self.generation.queue_paused {
+            return Some("Queue paused");
+        }
+        if self.queue_primary_id() == Some(id) && execution.start_pending.is_some() {
+            return self.capacity_blocker(&self.project, false);
+        }
+        if execution.drain_parallel || execution.requested_parallel.contains(&id) {
+            let item = self.generation.queue.iter().find(|item| item.id == id && item.state == State::Waiting)?;
+            return self.capacity_blocker(&item.recipe, true);
+        }
+        None
+    }
+
+    pub(super) fn request_queue_job(&mut self, id: u64, ctx: &egui::Context) {
+        if self.can_start_queue_job(id) {
+            self.generation.execution.requested_parallel.insert(id);
+            self.generation.execution.next_primary = Some(id);
+            self.start_requested_parallel(ctx);
+            ctx.request_repaint();
+        }
     }
 
     pub(super) fn start_queue_job(&mut self, id: u64, ctx: &egui::Context) {
@@ -471,7 +542,15 @@ impl Studio {
             .find(|item| item.id == id)
             .unwrap();
         let recipe = item.recipe.clone();
+        if self.capacity_blocker(&recipe, true).is_some() {
+            return;
+        }
         if let Err(error) = self.generation_preflight(&recipe, false) {
+            if let Some(item) = self.generation.queue.iter_mut().find(|item| item.id == id) {
+                item.state = State::Failed;
+                item.detail = error.clone();
+            }
+            self.generation.revision += 1;
             self.status = error;
             return;
         }
@@ -487,7 +566,8 @@ impl Studio {
         let (catalog, bindings) = prepared.map_or((None, None), |(catalog, bindings)| {
             (Some(catalog), Some(bindings))
         });
-        let terrain = Task::start(
+        let budget = JobBudget::new(self.reserve_terrain(&recipe));
+        let terrain = with_job_budget(Some(budget.clone()), || Task::start(
             &recipe,
             preview::Presentation {
                 live: self.live_generation,
@@ -498,9 +578,10 @@ impl Studio {
             palette,
             true,
             ctx.clone(),
-        );
-        self.generation.execution.extra = Some(Extra {
+        ));
+        self.generation.execution.jobs.insert(id, Extra {
             id,
+            budget,
             project: recipe,
             assets: Assets {
                 root,
@@ -545,9 +626,7 @@ impl Studio {
         } else if let Some(job) = self
             .generation
             .execution
-            .extra
-            .as_mut()
-            .filter(|job| job.id == id)
+            .jobs.get_mut(&id)
         {
             job.paused ^= true;
         }
@@ -555,17 +634,12 @@ impl Studio {
     }
 
     pub(super) fn cancel_extra_queue_job(&mut self, id: u64) -> bool {
-        if self
-            .generation
-            .execution
-            .extra
-            .as_ref()
-            .is_none_or(|job| job.id != id)
-        {
+        let Some(job) = self.generation.execution.jobs.remove(&id) else {
             return false;
-        }
-        let job = self.generation.execution.extra.take().unwrap();
+        };
         self.generation.elapsed.insert(id, job.elapsed());
+        self.generation.execution.retiring.push(job.budget.clone());
+        drop(job);
         self.generation.revision += 1;
         if let Some(item) = self.generation.queue.iter_mut().find(|item| item.id == id) {
             item.state = State::Cancelled;
@@ -574,50 +648,13 @@ impl Studio {
     }
 
     pub(super) fn tick_queue_execution(&mut self, ctx: &egui::Context) {
+        self.generation.execution.retiring.retain(JobBudget::has_workers);
+        if !self.generation.execution.retiring.is_empty() {
+            ctx.request_repaint_after(Duration::from_millis(120));
+        }
         if self.queue_primary_paused() {
-            if self.composition.running() {
-                self.composition.poll(ctx);
-                self.publish_composed_layout();
-            }
-            if self.map_colors.running() {
-                self.refresh_map_colors(ctx);
-            }
-            if self.map_archive.preparing()
-                && let (Some(id), Some(view), Some(root), Some(catalog)) = (
-                    self.queue_primary_id(),
-                    self.composition.view(&self.project),
-                    self.source.bound_root_ref(&self.project),
-                    self.prefabs.catalog(&self.project),
-                )
-            {
-                let _ = self.map_archive.prepare(
-                    id,
-                    view,
-                    map_archive::Assets {
-                        root: root.to_owned(),
-                        catalog,
-                        identities: self.prefabs.prepared_identities(&self.project, root),
-                    },
-                    ctx,
-                );
-            }
-            if self.generation.overview.is_some()
-                && let Some(id) = self.queue_primary_id()
-            {
-                let _ = self.retain_generated_overview(id, ctx);
-            }
-            if self.task.is_none()
-                && self.placement_task.is_none()
-                && !self.composition.running()
-                && self.generation.overview.is_none()
-                && !self.map_archive.preparing()
-                && !self.map_colors.running()
-            {
-                self.generation
-                    .execution
-                    .frozen_primary
-                    .get_or_insert_with(Instant::now);
-            }
+            let budget = self.generation.execution.primary_budget.clone();
+            with_job_budget(budget, || self.poll_paused_primary(ctx));
         } else {
             if let Some(at) = self.generation.execution.frozen_primary.take()
                 && let Some(start) = &mut self.generation.started
@@ -625,7 +662,7 @@ impl Studio {
                 *start += at.elapsed();
             }
             if self.generation.execution.start_pending.is_some() {
-                if !self.primary_waits_for_extra() {
+                if !self.primary_waits_for_capacity(&self.project) {
                     let reuse_render = self.generation.execution.start_pending.take().unwrap();
                     self.start_generation_candidate(ctx, reuse_render);
                 }
@@ -635,22 +672,69 @@ impl Studio {
                 self.start_placement(ctx);
             }
         }
-        if let Some(mut job) = self.generation.execution.extra.take() {
-            let live = self.live_generation && self.visible_generated_tab() == Some(job.id);
-            match job.tick(ctx, self.generation.queue_paused, live) {
+        let jobs = std::mem::take(&mut self.generation.execution.jobs);
+        for (id, mut job) in jobs {
+            let live = self.live_generation && self.visible_generated_tab() == Some(id);
+            let outcome = with_job_budget(Some(job.budget.clone()), || {
+                job.tick(ctx, self.generation.queue_paused, live)
+            });
+            match outcome {
                 Ok(None) => {
                     ctx.request_repaint_after(Duration::from_millis(120));
-                    self.generation.execution.extra = Some(job);
+                    self.generation.execution.jobs.insert(id, job);
                 }
-                outcome => self.finish_extra_queue_job(job, outcome, ctx),
+                outcome => {
+                    self.generation.execution.retiring.push(job.budget.clone());
+                    self.finish_extra_queue_job(job, outcome, ctx);
+                }
             }
         }
         self.start_requested_parallel(ctx);
-        let execution = &self.generation.execution;
-        if !self.generation.queue_paused && execution.extra.is_none()
-            && (execution.start_pending.is_some() || execution.advance_pending)
+    }
+
+    fn poll_paused_primary(&mut self, ctx: &egui::Context) {
+        if self.composition.running() {
+            self.composition.poll(ctx);
+            self.publish_composed_layout();
+        }
+        if self.map_colors.running() {
+            self.refresh_map_colors(ctx);
+        }
+        if self.map_archive.preparing()
+            && let (Some(id), Some(view), Some(root), Some(catalog)) = (
+                self.queue_primary_id(),
+                self.composition.view(&self.project),
+                self.source.bound_root_ref(&self.project),
+                self.prefabs.catalog(&self.project),
+            )
         {
-            ctx.request_repaint();
+            let _ = self.map_archive.prepare(
+                id,
+                view,
+                map_archive::Assets {
+                    root: root.to_owned(),
+                    catalog,
+                    identities: self.prefabs.prepared_identities(&self.project, root),
+                },
+                ctx,
+            );
+        }
+        if self.generation.overview.is_some()
+            && let Some(id) = self.queue_primary_id()
+        {
+            let _ = self.retain_generated_overview(id, ctx);
+        }
+        if self.task.is_none()
+            && self.placement_task.is_none()
+            && !self.composition.running()
+            && self.generation.overview.is_none()
+            && !self.map_archive.preparing()
+            && !self.map_colors.running()
+        {
+            self.generation
+                .execution
+                .frozen_primary
+                .get_or_insert_with(Instant::now);
         }
     }
 
@@ -664,22 +748,30 @@ impl Studio {
             execution.drain_parallel = false;
             return;
         }
-        if !self.extra_lane_available() {
+        if self.generation.queue_paused || execution.start_pending.is_some() || execution.advance_pending {
             return;
         }
-        let execution = &self.generation.execution;
-        let requested = self.generation.queue.iter().find(|item| {
-            execution.requested_parallel.contains(&item.id) && self.can_start_queue_job(item.id)
-        });
-        let selected = requested.or_else(|| {
-            if execution.drain_parallel {
-                self.generation.queue.iter().find(|item| self.can_start_queue_job(item.id))
-            } else {
-                None
+        loop {
+            let execution = &self.generation.execution;
+            let queue = &self.generation.queue;
+            let requested = execution.next_primary
+                .filter(|id| execution.requested_parallel.contains(id))
+                .and_then(|id| queue.iter().find(|item| item.id == id && self.eligible_queue_job(id)))
+                .or_else(|| queue.iter().find(|item| {
+                    execution.requested_parallel.contains(&item.id) && self.eligible_queue_job(item.id)
+                }));
+            let selected = requested.or_else(|| {
+                execution.drain_parallel.then(|| queue.iter().find(|item| self.eligible_queue_job(item.id))).flatten()
+            });
+            let Some(item) = selected else { break; };
+            if self.capacity_blocker(&item.recipe, true).is_some() {
+                break;
             }
-        }).map(|item| item.id);
-        if let Some(id) = selected {
+            let id = item.id;
             self.generation.execution.requested_parallel.remove(&id);
+            if self.generation.execution.next_primary == Some(id) {
+                self.generation.execution.next_primary = None;
+            }
             self.start_queue_job(id, ctx);
         }
     }
@@ -794,6 +886,73 @@ impl Studio {
 mod tests {
     use super::*;
 
+    fn wait_for_cancelled_workers(app: &Studio) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while app.generation.execution.retiring.iter().any(JobBudget::has_workers) {
+            assert!(Instant::now() < deadline, "Cancelled map worker did not exit");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn map_admission_respects_cpu_memory_and_explicit_cap() {
+        let limits = Limits { cpu_workers: 1, ..Limits::default() };
+        assert_eq!(limits.concurrent_maps, None);
+        assert_eq!(admission_blocker(limits, [].into_iter(), 64), None);
+        assert_eq!(admission_blocker(limits, [64].into_iter(), 64), Some("Waiting for CPU workers"));
+
+        let capped = Limits { concurrent_maps: Some(1), ..limits };
+        assert_eq!(admission_blocker(capped, [64].into_iter(), 64), Some("Waiting for a generation slot"));
+
+        if mapper_studio::generation_resources::available_workers() >= 4 {
+            let uncapped = Limits { cpu_workers: 4, terrain_memory_mib: 256, ..limits };
+            assert_eq!(admission_blocker(uncapped, [64, 64, 64].into_iter(), 64), None);
+            assert_eq!(admission_blocker(uncapped, [64, 64, 64].into_iter(), 65), Some("Waiting for terrain memory"));
+        }
+    }
+
+    #[test]
+    fn cancelled_map_keeps_capacity_until_its_worker_releases_the_budget() {
+        use mapper_studio::generation_resources::{current, job_worker};
+
+        let ctx = egui::Context::default();
+        let mut app = crate::tests::fixture(&ctx);
+        app.preferences.generation_resources.concurrent_maps = Some(1);
+        let recipe = app.document_recipe().clone();
+        let budget = JobBudget::new(384);
+        let worker = with_job_budget(Some(budget.clone()), || job_worker(|| current().terrain_memory_mib));
+        app.generation.execution.retiring.push(budget);
+        assert_eq!(app.capacity_blocker(&recipe, true), Some("Waiting for a generation slot"));
+        assert_eq!(worker(), 384);
+        assert_eq!(app.capacity_blocker(&recipe, true), None);
+    }
+
+    #[test]
+    fn uncapped_run_admits_more_than_two_and_lowering_cap_keeps_active_maps() {
+        let ctx = egui::Context::default();
+        let mut app = crate::tests::fixture(&ctx);
+        if mapper_studio::generation_resources::available_workers() < 4 {
+            return;
+        }
+        app.preferences.generation_resources = Limits {
+            cpu_workers: 4, terrain_memory_mib: 256, ..Limits::default()
+        };
+        let recipe = app.document_recipe().clone();
+        app.submit_generation(app.recipe_tabs.active(), BatchPlan {
+            count: 5, nonce: 483, random_master: true, ..BatchPlan::exact(recipe.clone())
+        }, Submission::Run, &ctx);
+        assert_eq!(app.generation.execution.jobs.len(), 3);
+        assert!(app.generation.execution.primary_budget.is_some());
+        let pending = app.generation.queue.last().unwrap().id;
+        assert_eq!(app.queue_wait_caption(pending), Some("Waiting for CPU workers"));
+
+        app.preferences.generation_resources.concurrent_maps = Some(2);
+        app.start_requested_parallel(&ctx);
+        assert_eq!(app.generation.execution.jobs.len(), 3);
+        assert_eq!(app.queue_wait_caption(pending), Some("Waiting for a generation slot"));
+        app.cancel_generation();
+    }
+
     #[test]
     fn run_batch_uses_free_lanes_without_draining_the_ordinary_queue() {
         let ctx = egui::Context::default();
@@ -815,26 +974,27 @@ mod tests {
         let ordinary = app.generation.queue[1].id;
         assert_eq!(app.queue_primary_id(), Some(first));
         assert_eq!(app.generation.queue[1].state, State::Waiting);
-        assert!(app.generation.execution.extra.is_none());
+        assert!(app.generation.execution.jobs.is_empty());
 
         app.submit_generation(recipe_id, batch(3, 733), Submission::Run, &ctx);
         let run: Vec<_> = app.generation.queue[2..].iter().map(|item| item.id).collect();
-        assert_eq!(app.generation.execution.extra_id(), Some(run[0]));
+        assert!(app.generation.execution.jobs.contains_key(&run[0]));
         assert_eq!(app.queue_primary_id(), Some(first));
         assert_eq!(app.generation.queue[1].state, State::Waiting);
 
-        app.submit_generation(recipe_id, BatchPlan::exact(recipe.clone()), Submission::Run, &ctx);
-        assert_eq!(app.generation.queue.len(), 5);
-        assert!(app.status.contains("No generation slot"));
-
         assert!(app.cancel_extra_queue_job(run[0]));
+        wait_for_cancelled_workers(&app);
         app.start_requested_parallel(&ctx);
-        assert_eq!(app.generation.execution.extra_id(), Some(run[1]));
+        assert!(app.generation.execution.jobs.contains_key(&run[1]));
         assert!(app.generation.execution.requested_parallel.contains(&run[2]));
         assert_eq!(app.generation.queue[1].id, ordinary);
         assert_eq!(app.generation.queue[1].state, State::Waiting);
 
         app.cancel_queued_map(first, &ctx);
+        wait_for_cancelled_workers(&app);
+        if app.generation.execution.advance_pending {
+            app.advance_generation(&ctx);
+        }
         assert_eq!(app.queue_primary_id(), Some(run[2]));
         assert!(app.generation.queue.iter().any(|item| item.id == ordinary && item.state == State::Waiting));
         assert!(!app.generation.execution.requested_parallel.contains(&run[2]));
@@ -846,6 +1006,10 @@ mod tests {
         assert!(!app.generation.execution.requested_parallel.contains(&waiting));
         app.run_queued_map_next(ordinary, &ctx);
         app.cancel_queued_map(run[2], &ctx);
+        wait_for_cancelled_workers(&app);
+        if app.generation.execution.advance_pending {
+            app.advance_generation(&ctx);
+        }
         assert_eq!(app.queue_primary_id(), Some(ordinary));
         app.cancel_generation();
         assert!(app.generation.execution.requested_parallel.is_empty());
@@ -915,11 +1079,11 @@ mod tests {
         let ids: Vec<_> = app.generation.queue.iter().map(|job| job.id).collect();
         let first_seed = app.project.master_seed;
         app.start_queue_job(ids[2], &ctx);
-        assert_eq!(app.generation.execution.extra_id(), Some(ids[2]));
+        assert!(app.generation.execution.jobs.contains_key(&ids[2]));
         assert_eq!(app.queue_primary_id(), Some(ids[0]));
         assert_eq!(app.project.master_seed, first_seed);
         assert_eq!(app.generation.queue[1].state, State::Waiting);
-        assert!(!app.can_start_queue_job(ids[1]));
+        assert!(app.capacity_blocker(&recipe, true).is_some());
 
         app.toggle_queue_job_pause(ids[2], &ctx);
         app.apply_queue_action(Some(QueueAction::ToggleQueuePause), &ctx);
@@ -929,6 +1093,7 @@ mod tests {
         assert!(app.generation.execution.advance_pending);
         assert_eq!(app.generation.queue[1].state, State::Waiting);
         app.apply_queue_action(Some(QueueAction::ToggleQueuePause), &ctx);
+        wait_for_cancelled_workers(&app);
         app.tick_queue_execution(&ctx);
         assert_eq!(app.queue_primary_id(), Some(ids[1]));
         assert!(!app.queue_job_paused(ids[1]));
@@ -981,7 +1146,7 @@ mod tests {
             2
         );
         let deadline = Instant::now() + Duration::from_secs(55);
-        while app.generation.busy() || app.generation.execution.extra.is_some() {
+        while app.generation.busy() || !app.generation.execution.jobs.is_empty() {
             let mut frame = ctx.run_ui(egui::RawInput::default(), |_| {
                 app.poll(&ctx);
                 app.poll_placement(&ctx);

@@ -645,6 +645,17 @@ impl Generation {
     pub fn busy(&self) -> bool {
         self.run.is_some()
     }
+    pub(super) fn primary_budget(&self) -> Option<mapper_studio::generation_resources::JobBudget> {
+        self.execution.primary_budget.clone()
+    }
+    pub(super) fn primary_waiting(&self) -> bool {
+        self.execution.start_pending.is_some() || self.execution.advance_pending
+    }
+    pub(super) fn replace_preserving_worker_budgets(&mut self, replacement: Self) {
+        let retiring = std::mem::take(&mut self.execution.retiring);
+        *self = replacement;
+        self.execution.retiring = retiring;
+    }
     fn available_slots(&self) -> usize {
         let first_running = self.queue.iter().position(|item| matches!(item.state, State::Running | State::Waiting));
         let protected = match (first_running, self.run.as_ref()) {
@@ -787,17 +798,17 @@ impl Studio {
         let state = self.generation.queue[index].state;
         let active = state == State::Running && self.generation.run.as_ref()
             .is_some_and(|run| run.active_id == id);
-        let extra_active = self.generation.execution.extra_id() == Some(id);
+        let extra_active = self.generation.execution.jobs.contains_key(&id);
         let elapsed = self.queue_elapsed(id);
         let (stage, fraction) = if state == State::Running && self.queue_job_paused(id) {
             (self.queue_pause_caption(id).into(), None)
         } else if active {
-            self.generation_stage()
+            self.queue_wait_caption(id).map_or_else(|| self.generation_stage(), |reason| (reason.into(), None))
         } else if state == State::Running {
             self.extra_queue_stage(id)
         } else {
             let stage = match state {
-                State::Waiting => "Queued",
+                State::Waiting => self.queue_wait_caption(id).unwrap_or("Queued"),
                 State::Running => "Generating",
                 State::Failed => "Generation failed",
                 State::Cancelled => "Cancelled",
@@ -1210,6 +1221,7 @@ impl Studio {
     }
 
     fn finish_generation_run(&mut self) {
+        self.retire_primary_budget();
         let active_matches = self.generation.active_recipe() == Some(&self.project);
         let draft_target = self.generation.draft_target.take();
         self.generation.draft_snapshot = None;
@@ -1286,7 +1298,7 @@ impl Studio {
 
     fn submit_generation(&mut self, id: u64, plan: BatchPlan, submission: Submission, ctx: &egui::Context) {
         if submission == Submission::Run
-            && let Some(reason) = self.run_blocker(plan.count)
+            && let Some(reason) = self.run_blocker()
         {
             self.status = reason.into();
             return;
@@ -1422,7 +1434,7 @@ impl Studio {
         });
         self.topology_tool.enabled = false;
         self.topology_tool.cancel_stroke();
-        if self.generation.queue_paused || self.primary_waits_for_extra() {
+        if self.generation.queue_paused || self.primary_waits_for_capacity(&self.project) {
             self.generation.execution.start_pending = Some(preserve_recipe);
         } else {
             self.start_generation_candidate(ctx, preserve_recipe);
@@ -1432,6 +1444,7 @@ impl Studio {
 
     fn start_generation_candidate(&mut self, ctx: &egui::Context, reuse_terrain: bool) {
         self.erosion_comparison.cancel();
+        self.reserve_primary_budget();
         self.generation.execution.primary_paused = false;
         self.generation.execution.frozen_primary = None;
         self.generation.started = Some(Instant::now());
@@ -1489,7 +1502,8 @@ impl Studio {
         self.generation.execution.placement_pending = false;
         self.generation.execution.primary_paused = false;
         self.record_generation_elapsed();
-        if let Some(id) = self.generation.execution.extra_id() {
+        let active: Vec<_> = self.generation.execution.jobs.keys().copied().collect();
+        for id in active {
             self.cancel_extra_queue_job(id);
         }
         if self.generation.run.is_some() {self.generation.revision+=1;}
@@ -1509,16 +1523,19 @@ impl Studio {
             ctx.request_repaint();
             return;
         }
-        let Some(run) = &mut self.generation.run else { return; };
         let Some(index) = self.generation.queue.iter().position(|item| item.id == id) else { return; };
+        if self.generation.queue[index].state == State::Waiting
+            && self.generation.run.as_ref().is_none_or(|run| index > run.finished)
+        {
+            self.generation.queue.remove(index);
+            self.generation.retire_waiting_map(id);
+            self.generation.revision += 1;
+            ctx.request_repaint();
+            return;
+        }
+        let Some(run) = &mut self.generation.run else { return; };
         let item = &mut self.generation.queue[index];
         match item.state {
-            State::Waiting if index > run.finished => {
-                self.generation.queue.remove(index);
-                self.generation.retire_waiting_map(id);
-                self.generation.revision += 1;
-                return;
-            }
             State::Running if run.active_id == id => {
                 item.state = State::Cancelled;
             }
@@ -1614,28 +1631,34 @@ impl Studio {
         self.advance_generation(ctx);
     }
     fn advance_generation(&mut self, ctx: &egui::Context) {
+        self.retire_primary_budget();
         self.generation.execution.start_pending = None;
         self.generation.execution.primary_paused = false;
         self.generation.execution.placement_pending = false;
         self.record_generation_elapsed();
         self.generation.overview=None;
         self.generation.overview_ready=None;
-        let primary_waits = self.primary_waits_for_extra();
-        let Some(run) = &mut self.generation.run else { return; };
-        let waiting = self.generation.queue.iter().enumerate().skip(run.finished + 1)
+        let Some(run) = &self.generation.run else { return; };
+        let mut waiting = self.generation.queue.iter().enumerate().skip(run.finished + 1)
             .filter(|(_, item)| item.state == State::Waiting);
         if let Some((next, _)) = waiting.clone().next() {
-            if self.generation.queue_paused || primary_waits {
-                self.generation.execution.advance_pending = true;
-                return;
-            }
-            let priority = self.generation.execution.next_primary.take();
-            let mut waiting = waiting;
+            let priority = self.generation.execution.next_primary;
             let selected = priority.and_then(|id| {
                 waiting.clone().find_map(|(index, item)| (item.id == id).then_some(index))
             }).or_else(|| waiting.find_map(|(index, item)| {
                 self.generation.execution.requested_parallel.contains(&item.id).then_some(index)
             })).unwrap_or(next);
+            if self.generation.queue_paused
+                || self.primary_waits_for_capacity(&self.generation.queue[selected].recipe)
+            {
+                self.generation.execution.advance_pending = true;
+                if !self.generation.queue_paused {
+                    ctx.request_repaint_after(Duration::from_millis(120));
+                }
+                return;
+            }
+            self.generation.execution.next_primary = None;
+            let run = self.generation.run.as_mut().unwrap();
             // Keep the ordinary waiting jobs in their existing order and inside
             // the unconsumed portion of the primary run.
             if selected != next {
@@ -1678,7 +1701,8 @@ impl Studio {
             || self.task.is_some()
             || self.placement_task.is_some()
             || self.composition.running()
-            || self.generation.execution.extra.is_some()
+            || !self.generation.execution.jobs.is_empty()
+            || self.generation.execution.retiring.iter().any(mapper_studio::generation_resources::JobBudget::has_workers)
     }
 
     pub(super) fn deferred_generation_placement(&self) -> bool {
@@ -1823,7 +1847,7 @@ impl Studio {
         const RADIUS: u8 = 8;
         let batch_enabled = enabled || matches!(blocker, Some(GenerationBlocker::QueueFull));
         let can_queue = enabled || matches!(blocker, Some(GenerationBlocker::MissingSeed));
-        let run_blocker = self.run_blocker(1);
+        let run_blocker = self.run_blocker();
         let can_run = can_queue && run_blocker.is_none();
         let run_blue = enabled && run_blocker.is_none();
         let left = egui::CornerRadius { nw: RADIUS, sw: RADIUS, ne: 0, se: 0 };
@@ -1995,7 +2019,7 @@ impl Studio {
         let slots = self.generation.available_slots();
         let has_variation = count == 1 || has_varying_seeds(self.recipe_by_id(id), random_master, randomize);
         let can_queue = count <= slots && has_variation;
-        let run_blocker = self.run_blocker(count);
+        let run_blocker = self.run_blocker();
         let can_run = can_queue && run_blocker.is_none();
         ui.separator();
         if count > slots {
@@ -2044,8 +2068,14 @@ impl Studio {
     }
     pub(super) fn tick_generation(&mut self, ctx: &egui::Context) {
         self.tick_queue_execution(ctx);
+        let budget = self.generation.execution.primary_budget.clone();
+        mapper_studio::generation_resources::with_job_budget(budget, || self.tick_primary_generation(ctx));
+    }
+
+    fn tick_primary_generation(&mut self, ctx: &egui::Context) {
         if !self.generation.busy() || self.queue_primary_paused()
             || self.generation.execution.start_pending.is_some()
+            || self.generation.execution.advance_pending
         {
             return;
         }
@@ -2507,7 +2537,7 @@ impl Studio {
             .unwrap_or("Map unavailable").to_owned()
     }
     fn queue_actions(&mut self, ui: &mut egui::Ui) -> egui::Response {
-        let running = self.generation.busy() || self.generation.execution.extra.is_some();
+        let running = self.generation.busy() || !self.generation.execution.jobs.is_empty();
         let config = MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside);
         let content = egui::Atoms::new((
             "Actions", egui::Atom::custom(egui::Id::new("queue-actions-chevron"), Vec2::splat(10.)),
@@ -2703,7 +2733,7 @@ impl Studio {
             Some(QueueAction::UseSeed(seed)) => self.use_queue_seed(seed),
             Some(QueueAction::LoadRecipe(id)) => self.load_queue_recipe(id),
             Some(QueueAction::CancelMap(id)) => self.cancel_queued_map(id, ctx),
-            Some(QueueAction::StartMap(id)) => self.start_queue_job(id, ctx),
+            Some(QueueAction::StartMap(id)) => self.request_queue_job(id, ctx),
             Some(QueueAction::StartAll) => {
                 self.generation.execution.drain_parallel = true;
                 ctx.request_repaint();
