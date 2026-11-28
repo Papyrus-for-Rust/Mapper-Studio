@@ -84,7 +84,7 @@ impl RecipeTab {
             Self::Terrain => "height mountains cliffs islands erosion tiers ocean shoreline rocks",
             Self::Biomes => "arctic temperate arid jungle temperatures rotation biome mix",
             Self::Monuments => "outpost placement custom layout composition",
-            Self::Water => "lakes river mouths ocean",
+            Self::Water => "lakes rivers mouths ocean custom river settings",
             Self::Roads => "ring roads trails roadside paths",
             Self::Rails => "train tracks ring rail",
             Self::Scenery => "content rules prefab blocklist car wrecks powerlines tunnels rail build roads beach spawns rocks trees",
@@ -102,10 +102,20 @@ fn content_rules(
     identities: Option<&mapper_studio::client_preparation::ReadyIdentities>,
     catalog: Option<&mapper_studio::prefab_assets::Catalog>,
 ) {
+    tunnel_rule(ui, options);
+    scenery_rules(ui, options);
+    jungle_spawn_rule(ui, options);
+    prefab_blocklist(ui, options, identities, catalog);
+}
+
+fn tunnel_rule(ui: &mut egui::Ui, options: &mut mapper_studio::recipe_options::Options) {
     generation_rule(ui, "Rail tunnels", &mut options.underground_tunnels,
         "Generate underground tunnels when the installation supports them.",
         "Skip underground tunnels.",
         "Generate tunnels on maps with compatible monument and tunnel data.");
+}
+
+fn scenery_rules(ui: &mut egui::Ui, options: &mut mapper_studio::recipe_options::Options) {
     for (name, exclusion, yes, no, default) in [
         ("Car wrecks", &mut options.block_car_wrecks,
             "Allow car wreck placements.", "Exclude car wreck prefabs from the map.",
@@ -125,11 +135,13 @@ fn content_rules(
         "Remove Road topology on export. Rail and monument restrictions stay active. The companion plugin also handles road collider checks.",
         "Keep Road topology and its construction restrictions.",
         "Keep standard road construction restrictions.");
+}
+
+fn jungle_spawn_rule(ui: &mut egui::Ui, options: &mut mapper_studio::recipe_options::Options) {
     generation_rule(ui, "Jungle spawns", &mut options.jungle_beach_spawns,
         "Blend a spawn-compatible biome into eligible jungle beach cells.",
         "Skip the jungle beach spawn adjustment.",
         "Use standard beach spawn rules.");
-    prefab_blocklist(ui, options, identities, catalog);
 }
 
 fn prefab_blocklist(
@@ -241,6 +253,7 @@ impl Studio {
         ui.add_space(7.);
         let mut found = false;
         let terms = query.trim().to_lowercase();
+        let wide = terms.is_empty() && ui.available_width() >= 660.;
         let scroll = egui::ScrollArea::vertical().animated(ui.style().animation_time > 0.);
         scroll.show(ui, |ui| {
             for topic in RecipeTab::ALL {
@@ -249,14 +262,44 @@ impl Studio {
                 if !terms.is_empty() {
                     open_recipe_section(ui, topic.label());
                 }
-                self.recipe_topic(ui, topic, recovery);
-                if topic == RecipeTab::Map {
-                    ui.add_space(7.);
+                if wide && topic == RecipeTab::Map {
+                    self.wide_recipe_basics(ui);
+                    ui.add_space(9.);
+                    self.recipe_generation_rules(ui);
+                    ui.add_space(14.);
+                    ui.strong("Detailed settings");
+                    ui.add_space(4.);
+                } else {
+                    self.recipe_topic(ui, topic, recovery);
+                    if topic == RecipeTab::Map {
+                        ui.add_space(7.);
+                    }
                 }
             }
             if !found {
                 ui.weak("No recipe settings match your search.");
             }
+        });
+    }
+
+    fn recipe_generation_rules(&mut self, ui: &mut egui::Ui) {
+        let info = egui::UiStackInfo::default().with_tag(WIDE_RECIPE_RULES);
+        ui.scope_builder(egui::UiBuilder::new().ui_stack_info(info), |ui| {
+            ui.spacing_mut().item_spacing.x = 14.;
+            ui.columns_const(|[network, placement]| {
+                network.strong("Transport & water");
+                let pins = self.recipe_asset_pins();
+                self.roads.quick_rules(network, &mut self.project, pins);
+                self.rails.quick_rule(network, &mut self.project);
+                let root = self.source.bound_root(&self.project);
+                self.water.quick_rules(network, &mut self.project, root);
+                tunnel_rule(network, &mut self.project.options);
+
+                placement.strong("Placement & scenery");
+                self.monument_placement_rules(placement);
+                scenery_rules(placement, &mut self.project.options);
+                jungle_spawn_rule(placement, &mut self.project.options);
+            });
         });
     }
 
@@ -353,17 +396,7 @@ impl Studio {
             self.project.performance.monuments = enabled;
         }
         monuments.body(|ui| {
-            ui.add_enabled_ui(self.project.performance.monuments, |ui| {
-                let options = &mut self.project.options;
-                generation_rule(ui, "Relax tier rules", &mut options.relax_monument_rules,
-                    "Allow land monuments with fewer corners in the requested tier.",
-                    "Require the standard monument tier checks.",
-                    "Use standard monument tier checks.");
-                generation_rule(ui, "Center Outpost", &mut options.center_outpost,
-                    "Require Outpost and favor the map center. An explicit Outpost pin takes precedence.",
-                    "Place Outpost without a center preference.",
-                    "Use the standard Outpost placement rules.");
-            }).response.on_disabled_hover_text("Enable Monuments to use these placement settings.");
+            self.monument_placement_rules(ui);
             if self.project.performance.monuments {
                 if pins.is_some() {
                     self.monuments.workflow(ui, &mut self.project);
@@ -375,7 +408,21 @@ impl Studio {
         });
     }
 
-    fn map_size_magnet(&mut self, ui: &mut egui::Ui, label_y: f32) {
+    fn monument_placement_rules(&mut self, ui: &mut egui::Ui) {
+        ui.add_enabled_ui(self.project.performance.monuments, |ui| {
+            let options = &mut self.project.options;
+            generation_rule(ui, "Relax tier rules", &mut options.relax_monument_rules,
+                "Allow land monuments with fewer corners in the requested tier.",
+                "Require the standard monument tier checks.",
+                "Use standard monument tier checks.");
+            generation_rule(ui, "Center Outpost", &mut options.center_outpost,
+                "Require Outpost and favor the map center. An explicit Outpost pin takes precedence.",
+                "Place Outpost without a center preference.",
+                "Use the standard Outpost placement rules.");
+        }).response.on_disabled_hover_text("Enable Monuments to use these placement settings.");
+    }
+
+    fn map_size_snap_button(&mut self, ui: &mut egui::Ui, label_y: f32) {
         let snap = self.preferences.map_size_snap;
         let (rect, response) = ui.allocate_exact_size(Vec2::new(18., 18.), Sense::click());
         let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
@@ -384,12 +431,23 @@ impl Studio {
             visuals.panel_fill, if snap.enabled() { 0.22 } else { 0.42 },
         );
         let reveal = ui.ctx().animate_bool_with_time(
-            response.id.with("magnet-highlight"),
+            response.id.with("snap-highlight"),
             response.hovered() || response.has_focus(),
             ui.style().animation_time.min(0.12),
         );
         let tint = muted.lerp_to_gamma(visuals.text_color(), reveal);
-        settings_dialog::Icon::Magnet.paint(ui, Pos2::new(rect.center().x, label_y + 1.), 14., tint);
+        let center = Pos2::new(rect.center().x, label_y);
+        let stroke = egui::Stroke::new(1.3, tint);
+        let point = |x, y| center + egui::vec2(x, y);
+        // An arrow meeting the center tick of a ruler.
+        ui.painter().add(egui::Shape::Vec(vec![
+            egui::Shape::line(vec![point(-6., -3.), point(-1., -3.)], stroke),
+            egui::Shape::line(vec![point(-3., -5.), point(-1., -3.), point(-3., -1.)], stroke),
+            egui::Shape::line(vec![point(1., -5.), point(1., 5.)], stroke),
+            egui::Shape::line(vec![point(-5., 5.), point(6., 5.)], stroke),
+            egui::Shape::line(vec![point(-4., 2.5), point(-4., 5.)], stroke),
+            egui::Shape::line(vec![point(5., 2.5), point(5., 5.)], stroke),
+        ]));
         response.widget_info(|| egui::WidgetInfo::selected(
             egui::WidgetType::Button, response.enabled(), snap.enabled(), "Map size snapping",
         ));
@@ -447,12 +505,28 @@ impl Studio {
     }
 
     fn recipe_basics(&mut self, ui: &mut egui::Ui) {
+        self.map_size_controls(ui);
+        ui.add_space(5.);
+        self.master_seed_controls(ui);
+    }
+
+    fn wide_recipe_basics(&mut self, ui: &mut egui::Ui) {
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing.x = 14.;
+            ui.columns_const(|[size, seed]| {
+                self.map_size_controls(size);
+                self.master_seed_controls(seed);
+            });
+        });
+    }
+
+    fn map_size_controls(&mut self, ui: &mut egui::Ui) {
         let old_size = self.project.size;
         let track_width = ui.available_width().max(1.);
         let size_label = ui.horizontal(|ui| {
             let start = ui.next_widget_position().x;
             let label = ui.label("Size (m)");
-            self.map_size_magnet(ui, label.rect.center().y);
+            self.map_size_snap_button(ui, label.rect.center().y);
             let fraction = self.project.size.saturating_sub(1000) as f32 / 5000.;
             let value_x = start + (10. + (track_width - 20.) * fraction - 26.)
                 .clamp(0., (track_width - 52.).max(0.));
@@ -483,7 +557,9 @@ impl Studio {
                 target.max_displacement_m = target.max_displacement_m.map(|limit| limit.min(self.project.size));
             }
         }
-        ui.add_space(5.);
+    }
+
+    fn master_seed_controls(&mut self, ui: &mut egui::Ui) {
         const SEED_CONTROL_SIZE: f32 = 28.;
         const SEED_INSET: i8 = 7;
         let font = egui::TextStyle::Body.resolve(ui.style());
@@ -1224,60 +1300,101 @@ pub(super) fn generation_override(
     no_help: &str,
     default_help: &str,
 ) -> Option<Option<bool>> {
+    generation_choices(ui, name, value, &[
+        ("Yes", Some(true), yes_help),
+        ("No", Some(false), no_help),
+        ("?", None, default_help),
+    ])
+}
+
+pub(super) fn binary_generation_rule(
+    ui: &mut egui::Ui, name: &str, enabled: bool, yes_help: &str, no_help: &str,
+) -> Option<bool> {
+    generation_choices(ui, name, Some(enabled), &[
+        ("Yes", Some(true), yes_help),
+        ("No", Some(false), no_help),
+    ]).flatten()
+}
+
+const WIDE_RECIPE_RULES: &str = "wide-recipe-rules";
+
+fn generation_choices(
+    ui: &mut egui::Ui,
+    name: &str,
+    value: Option<bool>,
+    choices: &[(&str, Option<bool>, &str)],
+) -> Option<Option<bool>> {
     ui.push_id(name, |ui| {
-        ui.horizontal(|ui| {
-            let in_settings = in_recipe_tab(ui);
-            let choice_width = if in_settings { 41. } else { 25. };
-            let choice_gap = if in_settings { 1. } else { 2. };
-            let default_gap = if in_settings { 7. } else { 0. };
-            let height = ui.spacing().interact_size.y;
-            let label_width = (ui.available_width()
-                - ui.spacing().item_spacing.x - 3. * (choice_width + choice_gap) - default_gap)
-                .max(0.);
-            let label = ui.allocate_ui_with_layout(
-                egui::vec2(label_width, height),
-                egui::Layout::left_to_right(egui::Align::Center),
-                |ui| {
-                    ui.set_min_width(label_width);
-                    ui.add(egui::Label::new(name).truncate())
-                },
-            ).inner;
-            let label = recipe_help(label, false, yes_help);
-            let mut change = None;
-            ui.scope(|ui| {
-                ui.spacing_mut().item_spacing.x = choice_gap;
-                ui.spacing_mut().button_padding.x = 3.;
-                for (title, option, description) in [
-                    ("Yes", Some(true), yes_help),
-                    ("No", Some(false), no_help),
-                    ("?", None, default_help),
-                ] {
-                    let mut button = egui::Button::selectable(value == option, title);
-                    if in_settings {
-                        let corners = match option {
-                            Some(true) => egui::CornerRadius { nw: 7, sw: 7, ne: 0, se: 0 },
-                            Some(false) => egui::CornerRadius { nw: 0, sw: 0, ne: 7, se: 7 },
-                            None => egui::CornerRadius::same(7),
-                        };
-                        if option.is_none() { ui.add_space(default_gap); }
-                        button = button.frame(true).frame_when_inactive(true).corner_radius(corners);
-                    } else {
-                        button = button.small();
-                    }
-                    let response = recipe_help(
-                        ui.add_sized(
-                            [choice_width, height], button,
-                        ).labelled_by(label.id),
-                        option.is_none(),
-                        description,
-                    );
-                    if response.clicked() && value != option {
-                        change = Some(option);
-                    }
+        let wide = ui.stack().iter().any(|stack| stack.tags().contains(WIDE_RECIPE_RULES));
+        if wide {
+            let fill = ui.visuals().widgets.noninteractive.bg_fill;
+            let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
+            egui::Frame::new().fill(fill).stroke(stroke).corner_radius(6)
+                .inner_margin(egui::Margin::symmetric(8, 4))
+                .show(ui, |ui| generation_choice_row(ui, name, value, choices, true)).inner
+        } else {
+            generation_choice_row(ui, name, value, choices, false)
+        }
+    }).inner
+}
+
+fn generation_choice_row(
+    ui: &mut egui::Ui,
+    name: &str,
+    value: Option<bool>,
+    choices: &[(&str, Option<bool>, &str)],
+    wide: bool,
+) -> Option<Option<bool>> {
+    ui.horizontal(|ui| {
+        let in_settings = in_recipe_tab(ui);
+        let framed = wide || in_settings;
+        let choice_width = if in_settings { 41. } else if wide { 36. } else { 25. };
+        let choice_gap = if framed { 1. } else { 2. };
+        let default_gap = if in_settings && choices.len() == 3 { 7. } else { 0. };
+        let height = ui.spacing().interact_size.y;
+        let label_width = (ui.available_width()
+            - ui.spacing().item_spacing.x - choices.len() as f32 * (choice_width + choice_gap) - default_gap)
+            .max(0.);
+        let label = ui.allocate_ui_with_layout(
+            egui::vec2(label_width, height),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.set_min_width(label_width);
+                ui.add(egui::Label::new(name).truncate())
+            },
+        ).inner;
+        let label = recipe_help(label, false, choices[0].2);
+        let mut change = None;
+        let radius = if in_settings { 7 } else { 6 };
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing.x = choice_gap;
+            ui.spacing_mut().button_padding.x = 3.;
+            if wide {
+                let visuals = ui.visuals_mut();
+                visuals.widgets.inactive.weak_bg_fill = visuals.widgets.noninteractive.bg_fill
+                    .lerp_to_gamma(visuals.text_color(), 0.07);
+            }
+            for (index, &(title, option, description)) in choices.iter().enumerate() {
+                let mut button = egui::Button::selectable(value == option, title);
+                if framed {
+                    let left = if index == 0 || (option.is_none() && in_settings) { radius } else { 0 };
+                    let right = if index == choices.len() - 1 || (in_settings && option == Some(false)) { radius } else { 0 };
+                    if option.is_none() && default_gap > 0. { ui.add_space(default_gap); }
+                    button = button.frame(true).frame_when_inactive(true)
+                        .corner_radius(egui::CornerRadius { nw: left, sw: left, ne: right, se: right });
+                } else {
+                    button = button.small();
                 }
-            });
-            change
-        }).inner
+                let response = recipe_help(
+                    ui.add_sized([choice_width, height], button).labelled_by(label.id),
+                    option.is_none(), description,
+                );
+                if response.clicked() && value != option {
+                    change = Some(option);
+                }
+            }
+        });
+        change
     }).inner
 }
 
@@ -1518,6 +1635,75 @@ mod tests {
     }
 
     #[test]
+    fn wide_recipe_rules_edit_both_columns_and_fit_the_compact_dock() {
+        mod snapshot { include!("../examples/support/egui_snapshot.rs"); }
+        for dark in [true, false] {
+            let ctx = egui::Context::default();
+            ctx.set_visuals(if dark { egui::Visuals::dark() } else { egui::Visuals::light() });
+            workbench_style::install(&ctx);
+            workbench_style::set_reduced_motion(&ctx, true);
+            let mut app = super::super::tests::fixture(&ctx);
+            app.project.performance.monuments = true;
+            app.project.master_seed = 12345;
+            let original = app.project.clone();
+            let mut textures = snapshot::Textures::default();
+            let mut render = |app: &mut Studio, width, events| {
+                let mut output = ctx.run_ui(egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(width, 720.))),
+                    events, focused: true, ..Default::default()
+                }, |ui| app.recipe_controls(ui));
+                textures.update(&output.textures_delta);
+                output.textures_delta.clear();
+                output
+            };
+            let compact = render(&mut app, 300., vec![]);
+            assert!(recipe_text(&compact, "Placement & scenery").is_none());
+            let wide = render(&mut app, 840., vec![]);
+            let networks = recipe_text(&wide, "Transport & water").unwrap();
+            let placement = recipe_text(&wide, "Placement & scenery").unwrap();
+            assert!((networks.y - placement.y).abs() < 1.);
+            assert!(placement.x - networks.x > 400.);
+            assert_eq!(app.project, original);
+
+            for (name, choice, right) in [
+                ("Rail tunnels", "No", false),
+                ("Center Outpost", "Yes", true),
+                ("Car wrecks", "No", true),
+                ("Center Outpost", "?", true),
+            ] {
+                let frame = render(&mut app, 840., vec![]);
+                let row = recipe_text(&frame, name).unwrap();
+                let pos = frame.shapes.iter().find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.job.text == choice => {
+                        let center = text.pos + text.galley.size() * 0.5;
+                        ((center.y - row.y).abs() < 2. && (center.x > 420.) == right
+                            && shape.clip_rect.contains(center)).then_some(center)
+                    }
+                    _ => None,
+                }).unwrap_or_else(|| panic!("Missing {choice} in recipe row {name}"));
+                for pressed in [true, false] {
+                    render(&mut app, 840., vec![egui::Event::PointerMoved(pos), egui::Event::PointerButton {
+                        pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE,
+                    }]);
+                }
+                match (name, choice) {
+                    ("Rail tunnels", _) => assert_eq!(app.project.options.underground_tunnels, Some(false)),
+                    ("Center Outpost", "Yes") => assert_eq!(app.project.options.center_outpost, Some(true)),
+                    ("Center Outpost", _) => assert_eq!(app.project.options.center_outpost, None),
+                    ("Car wrecks", _) => assert_eq!(app.project.options.block_car_wrecks, Some(true)),
+                    _ => unreachable!(),
+                }
+            }
+            if let Some(directory) = std::env::var_os("MAPPER_WIDE_RECIPE_SNAPSHOTS") {
+                let frame = render(&mut app, 840., vec![egui::Event::PointerGone]);
+                let image = textures.raster(&ctx, frame, [840, 720]);
+                let name = if dark { "recipe-wide-dark.png" } else { "recipe-wide-light.png" };
+                mapper_studio::image_export::write_png(&PathBuf::from(directory).join(name), &image, || false).unwrap();
+            }
+        }
+    }
+
+    #[test]
     fn recipe_settings_tabs_edit_the_same_recipe_and_keep_app_preferences_separate() {
         mod snapshot { include!("../examples/support/egui_snapshot.rs"); }
         for (dark, size) in [(true, [1200, 896]), (false, [640, 600])] {
@@ -1696,23 +1882,22 @@ mod tests {
             render(app, vec![button(point, false)]);
         };
         let initial = render(&mut app, vec![]);
-        let texture = ctx.data(|data| data.get_temp::<egui::TextureHandle>(
-            egui::Id::new(("mapper-settings-mdi", settings_dialog::Icon::Magnet)),
-        )).unwrap().id();
-        let mark = |output: &egui::FullOutput| output.shapes.iter().find_map(|shape| match &shape.shape {
-            egui::Shape::Mesh(mesh) if mesh.texture_id == texture => {
-                Some((mesh.calc_bounds().center(), mesh.vertices[0].color))
-            }
-            _ => None,
+        let mark = |output: &egui::FullOutput| output.shapes.iter().find_map(|shape| {
+            let egui::Shape::Vec(parts) = &shape.shape else { return None };
+            if parts.len() != 6 { return None; }
+            let egui::Shape::Path(tick) = &parts[2] else { return None };
+            let [top, bottom] = tick.points.as_slice() else { return None };
+            let center = top.lerp(*bottom, 0.5) - egui::vec2(1., 0.);
+            Some((center, tick.stroke.color.clone()))
         });
         let (magnet, idle_tint) = mark(&initial).unwrap();
         let label = recipe_text(&initial, "Size (m)").unwrap();
-        assert!((magnet.y - label.y - 1.).abs() < 1.);
+        assert!((magnet.y - label.y).abs() < 1.);
         assert!((10. ..55.).contains(&(magnet.x - label.x)));
         assert!(recipe_text(&initial, "Snap distance").is_none());
         let hovered = render(&mut app, vec![egui::Event::PointerMoved(magnet)]);
         let (_, hovered_tint) = mark(&hovered).unwrap();
-        assert_eq!(hovered_tint, ctx.style_of(ctx.theme()).visuals.text_color());
+        assert_eq!(hovered_tint, egui::epaint::ColorMode::Solid(ctx.style_of(ctx.theme()).visuals.text_color()));
         assert_ne!(idle_tint, hovered_tint);
 
 

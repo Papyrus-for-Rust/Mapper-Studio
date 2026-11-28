@@ -180,28 +180,65 @@ impl Panel {
         });
         self.message.clear();
     }
+    fn can_toggle(&self, project: &Project, root: Option<&std::path::Path>) -> bool {
+        project.rivers.is_some() || self.task.is_some()
+            || (mapper_studio::native_preview::is_native(&project.preview_engine) && root.is_some())
+    }
+
+    fn set_enabled(&mut self, project: &mut Project, root: Option<PathBuf>, ctx: &egui::Context, enabled: bool) {
+        if !enabled {
+            self.task = None;
+            project.rivers = None;
+        } else if let Some(recipe) = self.ready_for_import(project, root.as_deref()) {
+            project.rivers = Some(recipe);
+            if project.composition_engine.is_some()
+                && !papyrus_terrain::monument_composition::water_aware(project.composition_engine.as_deref())
+            {
+                project.composition_engine = Some(papyrus_terrain::monument_composition::WATER_VERSION.into());
+            }
+            self.message.clear();
+        } else if let (Some(root), Some(source)) = (root, project.installation.clone()) {
+            self.start(root, source, None, ctx);
+        }
+    }
+
+    pub(super) fn quick_rules(&mut self, ui: &mut egui::Ui, project: &mut Project, root: Option<PathBuf>) {
+        let enabled = project.rivers.is_some() || self.task.is_some();
+        let ctx = ui.ctx().clone();
+        ui.add_enabled_ui(self.can_toggle(project, root.as_deref()), |ui| {
+            if let Some(enabled) = super::panels::binary_generation_rule(ui, "Rivers", enabled,
+                "Generate rivers and carve channels using the installation’s river data.",
+                "Skip the river generation stage.",
+            ) {
+                self.set_enabled(project, root, &ctx, enabled);
+            }
+        }).response.on_disabled_hover_text("Rivers need a compatible Rust installation.");
+        ui.add_enabled_ui(project.rivers.is_some(), |ui| {
+            let custom = project.options.river_limit.is_some();
+            if let Some(custom) = super::panels::binary_generation_rule(ui, "Custom river settings", custom,
+                "Set a river limit in Water & rivers.",
+                "Use the installation’s standard river generation rules.",
+            ) {
+                project.options.river_limit = custom.then_some(3);
+            }
+        }).response.on_disabled_hover_text("Enable Rivers to set a river limit.");
+        if self.task.is_some() {
+            ui.spinner();
+        }
+        if !self.message.is_empty() {
+            ui.add(egui::Label::new(&self.message).truncate()).on_hover_text(&self.message);
+        }
+    }
+
     pub fn show(&mut self, ui: &mut egui::Ui, project: &mut Project, root: Option<PathBuf>) {
         let enabled = project.rivers.is_some() || self.task.is_some();
-        let native = mapper_studio::native_preview::is_native(&project.preview_engine);
         let ctx = ui.ctx().clone();
         let (header, changed) = super::panels::recipe_section(
-            ui, "Water & rivers", enabled, enabled || (native && root.is_some()), false,
+            ui, "Water & rivers", enabled, self.can_toggle(project, root.as_deref()), false,
             "Generate rivers and carve channels using the installation’s river data.",
         );
         if let Some(enabled) = changed {
-            if !enabled {self.task=None;project.rivers=None;}
-            else if let Some(recipe) = self.ready_for_import(project, root.as_deref()) {
-                project.rivers = Some(recipe);
-                if project.composition_engine.is_some()
-                    && !papyrus_terrain::monument_composition::water_aware(project.composition_engine.as_deref())
-                {
-                    project.composition_engine = Some(papyrus_terrain::monument_composition::WATER_VERSION.into());
-                }
-                self.message.clear();
-            }
-            else if let (Some(root),Some(source))=(root,project.installation.clone()) {
-                self.start(root,source,None,&ctx);
-            }
+            self.set_enabled(project, root, &ctx, enabled);
         }
         header.body(|ui| {
             if project.rivers.is_some() {

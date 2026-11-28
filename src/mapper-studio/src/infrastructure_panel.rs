@@ -431,36 +431,13 @@ impl RoadPanel {
         next.validate()?;*project=next;Ok(())
     }
     pub fn show(&mut self, ui: &mut egui::Ui, project: &mut Project, pins: Option<AssetIdentity>, reveal: bool) {
-        let native = mapper_studio::native_preview::is_native(&project.preview_engine);
         let enabled = project.roads.is_some();
         let (mut header, changed) = super::panels::recipe_section(
-            ui, "Roads & trails", enabled, enabled || (native && self.source.is_some() && pins.is_some()), false,
+            ui, "Roads & trails", enabled, self.can_toggle(project, pins.as_ref()), false,
             "Generate roads using the selected installation’s road data.",
         );
         if let Some(enabled) = changed {
-            if enabled {
-                let mut next=project.clone();
-                let result=(||->Result<(),String>{
-                    let pins=pins.as_ref().ok_or("Waiting for monument assets")?;
-                    next.check_monument_assets(&pins.catalog_sha256,&pins.bindings_sha256)?;
-                    next.monument_assets.get_or_insert(pins.clone());
-                    let source = self.source.as_ref().ok_or("Waiting for road metadata")?;
-                    let roads = if self.joined.as_ref().is_some_and(|p| p.policy.sampling.is_some()) {
-                        mapper_studio::infrastructure::Recipe::for_prepared_source(
-                            source,
-                            self.surface.clone().ok_or("Waiting for road surfaces")?,
-                            self.roadside.clone().ok_or("Waiting for roadside data")?,
-                            self.ordered.clone().ok_or("Waiting for ordered road inputs")?,
-                            next.rails.is_some() && !mapper_studio::rail_generation::before_roads(&next),
-                        )?
-                    } else {
-                        mapper_studio::infrastructure::Recipe::for_source(source)
-                    };
-                    next.roads = Some(roads);
-                    self.apply_defaults(&mut next)?;next.validate()
-                })();
-                match result {Ok(())=>{*project=next;self.message.clear();},Err(error)=>self.message=error}
-            } else {project.roads=None;project.rails=None;project.objects=None;}
+            self.set_enabled(project, pins, enabled);
         }
         if reveal {
             header.set_open(true);
@@ -468,6 +445,102 @@ impl RoadPanel {
         let (toggle, _) = header.body(|ui| self.road_settings(ui, project));
         if reveal {
             toggle.scroll_to_me(Some(egui::Align::Min));
+        }
+    }
+
+    fn can_toggle(&self, project: &Project, pins: Option<&AssetIdentity>) -> bool {
+        project.roads.is_some()
+            || (mapper_studio::native_preview::is_native(&project.preview_engine)
+                && self.source.is_some() && pins.is_some())
+    }
+
+    fn set_enabled(&mut self, project: &mut Project, pins: Option<AssetIdentity>, enabled: bool) {
+        if !enabled {
+            project.roads = None;
+            project.rails = None;
+            project.objects = None;
+            return;
+        }
+        let mut next = project.clone();
+        let result = (|| -> Result<(), String> {
+            let pins = pins.ok_or("Waiting for monument assets")?;
+            next.check_monument_assets(&pins.catalog_sha256, &pins.bindings_sha256)?;
+            next.monument_assets.get_or_insert(pins);
+            let source = self.source.as_ref().ok_or("Waiting for road metadata")?;
+            let roads = if self.joined.as_ref().is_some_and(|prepared| prepared.policy.sampling.is_some()) {
+                mapper_studio::infrastructure::Recipe::for_prepared_source(
+                    source,
+                    self.surface.clone().ok_or("Waiting for road surfaces")?,
+                    self.roadside.clone().ok_or("Waiting for roadside data")?,
+                    self.ordered.clone().ok_or("Waiting for ordered road inputs")?,
+                    next.rails.is_some() && !mapper_studio::rail_generation::before_roads(&next),
+                )?
+            } else {
+                mapper_studio::infrastructure::Recipe::for_source(source)
+            };
+            next.roads = Some(roads);
+            self.apply_defaults(&mut next)?;
+            next.validate()
+        })();
+        match result {
+            Ok(()) => {
+                *project = next;
+                self.message.clear();
+            }
+            Err(error) => self.message = error,
+        }
+    }
+
+    pub(super) fn quick_rules(&mut self, ui: &mut egui::Ui, project: &mut Project, pins: Option<AssetIdentity>) {
+        let enabled = project.roads.is_some();
+        ui.add_enabled_ui(self.can_toggle(project, pins.as_ref()), |ui| {
+            if let Some(enabled) = super::panels::binary_generation_rule(ui, "Roads & trails", enabled,
+                "Generate roads using the selected installation’s road data.",
+                "Skip roads and stages that use the road network.",
+            ) {
+                self.set_enabled(project, pins, enabled);
+            }
+        }).response.on_disabled_hover_text("Roads need compatible terrain and prepared road data.");
+        let ring_supported = self.ring_supported(project);
+        ui.add_enabled_ui(ring_supported, |ui| {
+            if let Some(roads) = &mut project.roads {
+                self.ring_rule(ui, roads);
+            } else {
+                Self::ring_choice(ui, None);
+            }
+        }).response.on_disabled_hover_text("Enable roads using an installation that supports ring roads.");
+        if !self.message.is_empty() {
+            ui.add(egui::Label::new(&self.message).truncate()).on_hover_text(&self.message);
+        }
+    }
+
+    fn ring_supported(&self, project: &Project) -> bool {
+        self.source.as_ref().is_some_and(|source| source.profile.ring.is_some())
+            && project.roads.as_ref().is_some_and(|roads| roads.engine == papyrus_terrain::road_network::COST_VERSION)
+    }
+
+    fn ring_choice(ui: &mut egui::Ui, value: Option<bool>) -> Option<Option<bool>> {
+        super::panels::generation_override(
+            ui, "Ring road", value,
+            "Generate a loop for the main road.",
+            "Generate paved roads without a main loop.",
+            "Use the generator default, which enables a ring road.",
+        )
+    }
+
+    fn ring_rule(&mut self, ui: &mut egui::Ui, roads: &mut mapper_studio::infrastructure::Recipe) {
+        if let Some(ring) = Self::ring_choice(ui, roads.main_ring) {
+            let mut next = roads.clone();
+            next.main_ring = ring;
+            next.ring_costmap = if ring != Some(false) && next.ring_search.is_some() {
+                next.access_costmap.clone()
+            } else {
+                None
+            };
+            match next.validate() {
+                Ok(()) => *roads = next,
+                Err(error) => self.message = error,
+            }
         }
     }
 
@@ -484,27 +557,10 @@ impl RoadPanel {
         {
             policy.roadside_preferences.clear();
         }
+        if self.ring_supported(project) && let Some(roads) = &mut project.roads {
+            self.ring_rule(ui, roads);
+        }
         if let (Some(roads),Some(source))=(&mut project.roads,&self.source) {
-            if source.profile.ring.is_some() && roads.engine==papyrus_terrain::road_network::COST_VERSION {
-                if let Some(ring) = super::panels::generation_override(
-                    ui, "Ring road", roads.main_ring,
-                    "Generate a loop for the main road.",
-                    "Generate paved roads without a main loop.",
-                    "Use the generator default, which enables a ring road.",
-                ) {
-                    let mut next = roads.clone();
-                    next.main_ring = ring;
-                    next.ring_costmap = if ring != Some(false) && next.ring_search.is_some() {
-                        next.access_costmap.clone()
-                    } else {
-                        None
-                    };
-                    match next.validate() {
-                        Ok(()) => *roads = next,
-                        Err(error) => self.message = error,
-                    }
-                }
-            }
             if source.profile.trails.is_some() && roads.engine==papyrus_terrain::road_network::COST_VERSION {
                 if let Some(trails) = super::panels::generation_override(
                     ui, "Dirt trails", roads.include_trails,

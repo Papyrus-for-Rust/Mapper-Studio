@@ -24,7 +24,6 @@ pub(super) enum Icon {
     Viewport,
     Updates,
     Refresh,
-    Magnet,
     Close,
 }
 
@@ -351,7 +350,6 @@ impl Icon {
                 Self::Viewport => asset!("eye-outline"),
                 Self::Updates => asset!("update"),
                 Self::Refresh => asset!("refresh"),
-                Self::Magnet => asset!("magnet"),
                 Self::Close => asset!("close"),
             };
             let pixels = mask

@@ -213,11 +213,30 @@ impl RailPanel {
         self.message.clear();
         Ok(())
     }
+    fn can_toggle(&self, project: &Project) -> bool {
+        project.rails.is_some()
+            || (mapper_studio::native_preview::is_native(&project.preview_engine) && self.ready.is_some())
+    }
+
+    pub(super) fn quick_rule(&mut self, ui: &mut egui::Ui, project: &mut Project) {
+        let enabled = project.rails.is_some();
+        ui.add_enabled_ui(self.can_toggle(project), |ui| {
+            if let Some(enabled) = super::panels::binary_generation_rule(ui, "Surface rails", enabled,
+                "Generate a rail network above ground.",
+                "Skip the surface rail network.",
+            ) && let Err(error) = self.toggle(project, enabled) {
+                self.message = error;
+            }
+        }).response.on_disabled_hover_text("Surface rails need roads and compatible installation data.");
+        if !self.message.is_empty() {
+            ui.add(egui::Label::new(&self.message).truncate()).on_hover_text(&self.message);
+        }
+    }
+
     pub fn show(&mut self, ui: &mut egui::Ui, project: &mut Project, reveal: bool) {
-        let native = mapper_studio::native_preview::is_native(&project.preview_engine);
         let enabled = project.rails.is_some();
         let (mut header, changed) = super::panels::recipe_section(
-            ui, "Rails", enabled, enabled || (native && self.ready.is_some()), false,
+            ui, "Rails", enabled, self.can_toggle(project), false,
             "Generate surface rails. Surface rails need roads and compatible installation data.",
         );
         if let Some(enabled) = changed
