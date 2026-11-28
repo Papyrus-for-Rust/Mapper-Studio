@@ -38,7 +38,9 @@ FinishedHeadingLabel=Mapper is ready
 FinishedLabel=Open Mapper now or find it in the Start menu.
 
 [Files]
-Source: "{#PackageDirectory}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PackageDirectory}\mapper.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PackageDirectory}\update-channel.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PackageDirectory}\*"; DestDir: "{app}"; Excludes: "\mapper.exe,\update-channel.json"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 Source: "{#Branding}\papyrus.ico"; DestDir: "{app}"; DestName: "mapper.ico"; Flags: ignoreversion
 
@@ -57,7 +59,7 @@ var
   InstalledVersion, InstallerVersion, UninstallerPath: String;
   InstallAction, UninstallAction: Integer;
   InstallActionLabel: String;
-  SetupIsOlder, UninstallCompleted: Boolean;
+  SetupIsOlder, ExitingAfterMaintenance, CheckedForNewerSetup: Boolean;
 
 function TakeIdentifier(var Version: String; const Separator: String): String;
 var
@@ -212,19 +214,95 @@ begin
   WizardForm.NextButton.Enabled := MaintenancePage.SelectedValueIndex >= 0;
 end;
 
+procedure OfferNewerSetup;
+var
+  TempDir, LatestVersion, Url, Digest, FileName, InstallerPath: String;
+  Output: TExecOutput;
+  DownloadPage: TDownloadWizardPage;
+  ExitCode: Integer;
+begin
+  if CheckedForNewerSetup or WizardSilent then
+    Exit;
+  CheckedForNewerSetup := True;
+  if ExpandConstant('{param:SKIPSETUPUPDATE|0}') = '1' then
+    Exit;
+
+  TempDir := ExpandConstant('{tmp}');
+  try
+    ExtractTemporaryFile('mapper.exe');
+    ExtractTemporaryFile('update-channel.json');
+    if not ExecAndCaptureOutput(TempDir + '\mapper.exe',
+        'setup-update-check ' + AddQuotes(InstalledVersion), TempDir,
+        SW_HIDE, ewWaitUntilTerminated, ExitCode, Output) then
+      Exit;
+    if (ExitCode <> 0) or Output.Error or (GetArrayLength(Output.StdOut) <> 3) then
+      Exit;
+    LatestVersion := Output.StdOut[0];
+    Url := Output.StdOut[1];
+    Digest := Output.StdOut[2];
+  except
+    Log('Mapper setup update check skipped: ' + GetExceptionMessage);
+    Exit;
+  end;
+
+  if MsgBox('Mapper ' + LatestVersion + ' is available. Download and install it instead?',
+      mbConfirmation, MB_YESNO or MB_DEFBUTTON2) <> IDYES then
+    Exit;
+
+  FileName := 'mapper-newer-setup.exe';
+  InstallerPath := TempDir + '\' + FileName;
+  DownloadPage := CreateDownloadPage('Downloading Mapper ' + LatestVersion,
+    'The newer installer will open after its download is verified.', nil);
+  DownloadPage.Add(Url, FileName, Digest);
+  DownloadPage.Show;
+  try
+    try
+      DownloadPage.Download;
+    except
+      if not DownloadPage.AbortedByUser then
+        MsgBox('The newer installer could not be downloaded or verified. You can continue with this installer.',
+          mbError, MB_OK);
+      Exit;
+    end;
+  finally
+    DownloadPage.Hide;
+  end;
+
+  WizardForm.Hide;
+  if not Exec(InstallerPath, '/SKIPSETUPUPDATE=1', TempDir,
+      SW_SHOWNORMAL, ewWaitUntilTerminated, ExitCode) then
+  begin
+    WizardForm.Show;
+    MsgBox('Could not open the newer installer. ' + SysErrorMessage(ExitCode), mbError, MB_OK);
+    Exit;
+  end;
+  if ExitCode = 0 then
+  begin
+    ExitingAfterMaintenance := True;
+    WizardForm.Close;
+  end
+  else
+    WizardForm.Show;
+end;
+
 procedure CurPageChanged(PageID: Integer);
 begin
   if (MaintenancePage <> nil) and (PageID = MaintenancePage.ID) then
   begin
     MaintenancePage.CheckListBox.OnClickCheck := @ShowMaintenanceAction;
     ShowMaintenanceAction(nil);
-  end;
+    OfferNewerSetup;
+  end
+  else if (MaintenancePage = nil) and (PageID = wpReady) then
+    OfferNewerSetup;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
-  if SetupIsOlder then
+  if ExitingAfterMaintenance then
+    Result := 'The newer installer has already finished.'
+  else if SetupIsOlder then
     Result := 'Mapper ' + InstalledVersion + ' is already installed. Use a newer installer.';
 end;
 
@@ -254,12 +332,12 @@ begin
     WizardForm.Show;
     Exit;
   end;
-  UninstallCompleted := True;
+  ExitingAfterMaintenance := True;
   WizardForm.Close;
 end;
 
 procedure CancelButtonClick(PageID: Integer; var Cancel, Confirm: Boolean);
 begin
-  if UninstallCompleted then
+  if ExitingAfterMaintenance then
     Confirm := False;
 end;

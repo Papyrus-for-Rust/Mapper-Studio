@@ -67,15 +67,33 @@ impl Channel {
     }
 
     pub fn check(&self, cancel: impl Fn() -> bool) -> Result<Option<Release>, String> {
+        self.check_asset(ReleaseKind::Portable, None, 15, cancel)
+    }
+
+    pub fn newer_installer(&self, installed: Option<&str>) -> Result<Option<[String; 3]>, String> {
+        let installed = installed.and_then(|value| Version::parse(value).ok());
+        self.check_asset(ReleaseKind::Installer, installed.as_ref(), 5, || false)
+            .map(|release| release.map(|release| [release.version, release.url, release.digest]))
+    }
+
+    fn check_asset(
+        &self,
+        kind: ReleaseKind,
+        installed: Option<&Version>,
+        timeout: u32,
+        cancel: impl Fn() -> bool,
+    ) -> Result<Option<Release>, String> {
         let file = tempfile::NamedTempFile::new().map_err(error)?;
         let url = format!(
             "https://api.github.com/repos/{}/releases?per_page=30",
             self.repository
         );
-        if !download(&url, file.path(), 4 * 1024 * 1024, 15, &cancel)? {
+        if !download(&url, file.path(), 4 * 1024 * 1024, timeout, &cancel)? {
             return Ok(None);
         }
-        select_release(self, file.reopen().map_err(error)?.take(4 * 1024 * 1024))
+        select_release(
+            self, file.reopen().map_err(error)?.take(4 * 1024 * 1024), kind, installed,
+        )
     }
 
     pub fn prepare(
@@ -247,7 +265,18 @@ struct Asset {
     digest: Option<String>,
 }
 
-fn select_release(channel: &Channel, response: impl Read) -> Result<Option<Release>, String> {
+#[derive(Clone, Copy)]
+enum ReleaseKind {
+    Portable,
+    Installer,
+}
+
+fn select_release(
+    channel: &Channel,
+    response: impl Read,
+    kind: ReleaseKind,
+    installed: Option<&Version>,
+) -> Result<Option<Release>, String> {
     let current = Version::parse(&channel.version).map_err(error)?;
     let releases: Vec<GitHubRelease> = serde_json::from_reader(response).map_err(error)?;
     Ok(releases
@@ -256,16 +285,21 @@ fn select_release(channel: &Channel, response: impl Read) -> Result<Option<Relea
             let version = Version::parse(entry.tag_name.strip_prefix('v')?).ok()?;
             if entry.draft
                 || !version.cmp_precedence(&current).is_gt()
+                || installed.is_some_and(|old| !version.cmp_precedence(old).is_gt())
                 || !version.build.is_empty()
                 || (current.pre.is_empty() && (entry.prerelease || !version.pre.is_empty()))
             {
                 return None;
             }
+            let installer_name = format!("Mapper-for-Rust-{version}-Setup-win-x64.exe");
             let asset = entry.assets.into_iter().find(|asset| {
                 asset.state == "uploaded"
                     && (1..=MAX_DOWNLOAD).contains(&asset.size)
-                    && asset.name.starts_with("Mapper-for-Rust-")
-                    && asset.name.ends_with("-win-x64.zip")
+                    && match kind {
+                        ReleaseKind::Portable => asset.name.starts_with("Mapper-for-Rust-")
+                            && asset.name.ends_with("-win-x64.zip"),
+                        ReleaseKind::Installer => asset.name == installer_name,
+                    }
                     && asset.name.len() <= 120
                     && asset
                         .name
@@ -519,11 +553,37 @@ mod tests {
             repository: "Example/Mapper".into(),
             version: "0.1.0-preview.9".into(),
         };
-        let latest = select_release(&channel, data.as_bytes()).unwrap().unwrap();
+        let latest = select_release(&channel, data.as_bytes(), ReleaseKind::Portable, None).unwrap().unwrap();
         assert_eq!(latest.version, "0.1.0-preview.67");
         assert!(latest.url.ends_with(&format!("/v0.1.0-preview.67/{asset}")));
         channel.version = "0.1.0".into();
-        assert!(select_release(&channel, data.as_bytes()).unwrap().is_none());
+        assert!(select_release(&channel, data.as_bytes(), ReleaseKind::Portable, None).unwrap().is_none());
+    }
+
+    #[test]
+    fn setup_checks_versioned_exes_against_both_installer_and_installed_versions() {
+        let setup = |version: &str, digest: Option<String>| {
+            json!({
+                "tag_name": format!("v{version}"), "draft": false, "prerelease": true,
+                "assets": [
+                    {"name":format!("Mapper-for-Rust-{version}-win-x64.zip"),"size":500,"state":"uploaded","digest":digest},
+                    {"name":format!("Mapper-for-Rust-{version}-Setup-win-x64.exe"),"size":500,"state":"uploaded","digest":digest},
+                ]
+            })
+        };
+        let digest = Some(format!("sha256:{}", "a".repeat(64)));
+        let data = json!([
+            setup("0.1.0-beta.5", digest.clone()),
+            setup("0.1.0-beta.10", digest),
+            setup("0.1.0-beta.11", None),
+        ]).to_string();
+        let channel = Channel { repository: "Example/Mapper".into(), version: "0.1.0-beta.4".into() };
+        let old = Version::parse("0.1.0-beta.9").unwrap();
+        let release = select_release(&channel, data.as_bytes(), ReleaseKind::Installer, Some(&old)).unwrap().unwrap();
+        assert_eq!(release.version, "0.1.0-beta.10");
+        assert!(release.url.ends_with("/v0.1.0-beta.10/Mapper-for-Rust-0.1.0-beta.10-Setup-win-x64.exe"));
+        let current = Version::parse("0.1.0-beta.10").unwrap();
+        assert!(select_release(&channel, data.as_bytes(), ReleaseKind::Installer, Some(&current)).unwrap().is_none());
     }
 
     #[test]

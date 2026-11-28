@@ -2585,6 +2585,19 @@ fn main() -> ExitCode {
         println!("Mapper for Rust {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
+    if args.first().is_some_and(|arg| arg == "setup-update-check") && args.len() <= 2 {
+        let Some(channel) = mapper_studio::updates::Channel::installed() else {
+            return ExitCode::FAILURE;
+        };
+        return match channel.newer_installer(args.get(1).and_then(|arg| arg.to_str())) {
+            Ok(Some([version, url, digest])) => {
+                println!("{version}\n{url}\n{digest}");
+                ExitCode::SUCCESS
+            }
+            Ok(None) => ExitCode::SUCCESS,
+            Err(_) => ExitCode::FAILURE,
+        };
+    }
     let cancel = Arc::new(AtomicBool::new(false));
     let signal = cancel.clone();
     if let Err(error) = ctrlc::set_handler(move || signal.store(true, Ordering::Relaxed)) {
