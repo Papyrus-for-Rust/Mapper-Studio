@@ -3,6 +3,7 @@
 mod prepared_assets;
 mod generation_ui;
 mod recipe_tabs;
+mod recipe_library;
 use recipe_tabs::FIRST_RECIPE;
 mod tool_icons;
 mod path_editor;
@@ -66,9 +67,10 @@ fn ocean_background(palette:Option<&mapper_studio::terrain_palette::Palette>,col
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tab {
-    Map,
+    Home,
     Generated(u64),
     Recipe(u64),
+    RecipeAdd,
     Outliner,
     Inspector,
     Queue,
@@ -77,11 +79,11 @@ enum Tab {
     Nodes,
 }
 fn layout() -> DockState<Tab> {
-    let mut dock = DockState::new(vec![Tab::Map]);
+    let mut dock = DockState::new(vec![Tab::Home]);
     let [workspace, _recipe] = dock.main_surface_mut().split_left(
         NodeIndex::root(),
         0.22,
-        vec![Tab::Recipe(FIRST_RECIPE)],
+        vec![Tab::Recipe(FIRST_RECIPE), Tab::RecipeAdd],
     );
     let [center, outliner] = dock.main_surface_mut().split_right(
         workspace,
@@ -134,6 +136,8 @@ struct Studio {
     project: Project,
     saved: Project,
     recipe_tabs: recipe_tabs::RecipeTabs,
+    recipe_library: recipe_library::Library,
+    seed_scenes: std::collections::BTreeMap<u64, generation_ui::SeedScene>,
     path: Option<PathBuf>,
     history: History,
     dock: DockState<Tab>,
@@ -238,6 +242,8 @@ impl Studio {
             project_io:Default::default(),
             saved: p.clone(),
             recipe_tabs: Default::default(),
+            recipe_library: Default::default(),
+            seed_scenes: Default::default(),
             project: p,
             path: None,
             history: History::default(),
@@ -320,6 +326,7 @@ impl Studio {
             restore_source: false,
         };
         app.load_preferences(&cc.egui_ctx);
+        app.load_recipe_library(path.is_none());
         if app.preferences.check_for_updates {
             app.updates.check(&cc.egui_ctx, false);
         }
@@ -435,9 +442,10 @@ impl Studio {
         }
     }
     fn dirty(&self) -> bool {
-        self.document_recipe() != &self.saved
-            || self.generation.revision != self.project_io.saved_generation
-            || self.recipe_tabs.revision != self.project_io.saved_recipes
+        let workspace_recipes = self.path.is_some() || !self.recipe_library.can_autosave();
+        self.generation.revision != self.project_io.saved_generation
+            || (workspace_recipes && (self.document_recipe() != &self.saved
+                || self.recipe_tabs.revision != self.project_io.saved_recipes))
     }
     fn pristine_new_project(&self) -> bool {
         self.path.is_none() && !self.history.can_undo() && !self.history.can_redo() && !self.dirty()
@@ -725,7 +733,7 @@ impl Studio {
     }
 
     fn working_map_visible(&self) -> bool {
-        self.dock.find_tab(&Tab::Map).is_some_and(|path| {
+        cfg!(test) && self.dock.find_tab(&Tab::Home).is_some_and(|path| {
             self.dock.leaf(path.node_path()).is_ok_and(|leaf| leaf.active == path.tab)
         })
     }
@@ -1049,6 +1057,7 @@ impl Studio {
         if self.defer_project_action(action) {
             return;
         }
+        self.persist_recipe_library();
         // A file must open successfully before we ask to replace the current project.
         if !matches!(action, Action::Open) && self.dirty() {
             self.pending = Some(action)
@@ -1059,6 +1068,7 @@ impl Studio {
     fn perform(&mut self, action: Action, ctx: &egui::Context) {
         match action {
             Action::Close => {
+                self.persist_recipe_library();
                 self.plugins.cancel();
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1082,6 +1092,8 @@ impl Studio {
         };
     }
     fn replace_project(&mut self, p: Project, path: Option<PathBuf>) {
+        self.persist_recipe_library();
+        self.recipe_library.clear_open_cache();
         self.nodes = Default::default();
         self.source.cancel_inspection();
         self.project_io.discard_opened();
@@ -1092,6 +1104,7 @@ impl Studio {
         self.project_io.saved_generation = 0;
         self.project_io.saved_recipes = 0;
         self.recipe_tabs = Default::default();
+        self.seed_scenes.clear();
         self.recipe_settings_open = false;
         self.dock = layout();
         self.requested_tab = None;
@@ -1196,6 +1209,7 @@ impl Studio {
         }
     }
 
+    #[allow(dead_code)] // Retained for working-preview regression tests.
     fn map(&mut self, ui: &mut egui::Ui) {
         self.upload_stage_preview(ui.ctx());
         self.refresh_map_colors(ui.ctx());
@@ -2258,34 +2272,36 @@ impl Studio {
 struct Tabs<'a> {
     studio: &'a mut Studio,
     active_map: Option<u64>,
-    map_count: usize,
     closing: Vec<Tab>,
     active_tabs: Vec<(Tab, Rect)>,
 }
 impl<'a> Tabs<'a> {
     fn new(studio: &'a mut Studio, active: Option<u64>, dock: &DockState<Tab>) -> Self {
-        let map_tabs = dock.iter_all_tabs()
-            .filter(|(_, tab)| matches!(tab, Tab::Map | Tab::Generated(_)))
-            .count();
         let active_tabs = dock.iter_all_nodes()
             .filter_map(|(_, node)| node.get_leaf())
             .filter(|leaf| !leaf.collapsed && !leaf.tab_bar_hidden && leaf.rect.is_positive())
             .filter_map(|leaf| Some((*leaf.tabs.get(leaf.active.0)?, leaf.rect)))
             .collect();
-        Self { studio, active_map: active, map_count: map_tabs, closing: Vec::new(), active_tabs }
+        Self { studio, active_map: active, closing: Vec::new(), active_tabs }
     }
 
-    fn finish(mut self, dock: &mut DockState<Tab>) {
+    fn finish(self, dock: &mut DockState<Tab>) {
         if let Some((anchor, duplicate)) = self.studio.recipe_tabs.pending_new.take() {
             self.studio.add_recipe_tab(anchor, duplicate, dock);
         }
         for tab in self.closing {
             let Some(path) = dock.find_tab(&tab) else { continue; };
-            if self.map_count > 1 {
-                dock.remove_tab(path);
-                self.map_count -= 1;
-            } else if let Ok(leaf) = dock.leaf_mut(path.node_path()) {
-                leaf.tabs[path.tab.0] = Tab::Map;
+            dock.remove_tab(path);
+            if let Tab::Recipe(id) = tab {
+                self.studio.persist_recipe_library();
+                self.studio.recipe_tabs.close(id);
+                if self.studio.recipe_tabs.active() == id
+                    && let Some(next) = dock.iter_all_tabs().find_map(|(_, tab)| {
+                        if let Tab::Recipe(id) = tab { Some(*id) } else { None }
+                    })
+                {
+                    self.studio.activate_recipe(next);
+                }
             }
         }
     }
@@ -2297,6 +2313,12 @@ impl TabViewer for Tabs<'_> {
     }
     fn on_tab_button(&mut self, tab: &mut Tab, response: &egui::Response) {
         workbench_style::finish_dock_title(response);
+        if *tab == Tab::RecipeAdd {
+            response.clone().on_hover_text("New recipe");
+            if response.clicked() && self.studio.recipe_tabs.can_add() {
+                self.studio.recipe_tabs.pending_new = Some((self.studio.recipe_tabs.active(), false));
+            }
+        }
         if let Tab::Recipe(id) = *tab {
             if response.clicked() || response.double_clicked() {
                 self.studio.activate_recipe(id);
@@ -2310,6 +2332,7 @@ impl TabViewer for Tabs<'_> {
                 "Click to activate. Double-click to rename."
             };
             response.clone().on_hover_text(hint);
+            self.studio.recipe_tabs.rename_in_tab(id, response);
         }
         if let Some((_, leaf)) = self.active_tabs.iter().find(|(active, _)| active == tab) {
             workbench_style::join_dock_tab(response, *leaf);
@@ -2319,13 +2342,16 @@ impl TabViewer for Tabs<'_> {
         if let Tab::Generated(id) = *t { return self.studio.generated_title(id).into(); }
         if let Tab::Recipe(id) = *t {
             let mut title = egui::RichText::new(self.studio.recipe_tabs.name(id)).size(16.).strong();
-            if self.studio.recipe_tabs.multiple() && id == self.studio.recipe_tabs.active() {
+            if self.studio.recipe_tabs.editing_name(id) {
+                title = title.color(Color32::TRANSPARENT);
+            } else if self.studio.recipe_tabs.multiple() && id == self.studio.recipe_tabs.active() {
                 title = title.underline();
             }
             return title.into();
         }
         let title = match t {
-            Tab::Map => "Recipe preview",
+            Tab::Home => "Home",
+            Tab::RecipeAdd => "+",
             Tab::Generated(_) => unreachable!(),
             Tab::Recipe(_) => unreachable!(),
             Tab::Outliner => "Monuments",
@@ -2335,7 +2361,7 @@ impl TabViewer for Tabs<'_> {
             Tab::Plugins => "Plugins",
             Tab::Nodes => "Nodes",
         };
-        if matches!(t, Tab::Outliner | Tab::Map) {
+        if matches!(t, Tab::Outliner | Tab::Home) {
             egui::RichText::new(title).strong().into()
         } else {
             title.into()
@@ -2356,7 +2382,12 @@ impl TabViewer for Tabs<'_> {
     fn ui(&mut self, ui: &mut egui::Ui, t: &mut Tab) {
         workbench_style::finish_dock_body(ui);
         match t {
-            Tab::Map => self.studio.map(ui),
+            Tab::Home => self.studio.home(ui),
+            Tab::RecipeAdd => {
+                if self.studio.recipe_tabs.closed.contains(&self.studio.recipe_tabs.active()) {
+                    ui.weak("Open a saved recipe from Home or create one with +.");
+                }
+            },
             Tab::Generated(id) => self.studio.generated_map(ui, *id),
             Tab::Recipe(id) => {
                 self.studio.recipe_generate_for(ui, *id);
@@ -2391,7 +2422,10 @@ impl TabViewer for Tabs<'_> {
         }
     }
     fn is_closeable(&self, tab: &Tab) -> bool {
-        matches!(tab, Tab::Generated(_) | Tab::Nodes) || (*tab == Tab::Map && self.map_count > 1)
+        matches!(tab, Tab::Generated(_) | Tab::Nodes | Tab::Recipe(_))
+    }
+    fn allowed_in_windows(&self, tab: &mut Tab) -> bool {
+        *tab != Tab::RecipeAdd
     }
     fn scroll_bars(&self, tab: &Tab) -> [bool; 2] {
         [!matches!(tab, Tab::Nodes | Tab::Recipe(_) | Tab::Queue); 2]
@@ -2403,7 +2437,7 @@ impl TabViewer for Tabs<'_> {
         if let Tab::Generated(id) = *tab {
             self.studio.close_generation_tab(id);
         }
-        if matches!(tab, Tab::Map | Tab::Generated(_)) {
+        if matches!(tab, Tab::Recipe(_) | Tab::Generated(_)) {
             self.closing.push(*tab);
         }
         OnCloseResponse::Ignore
@@ -2481,7 +2515,9 @@ impl eframe::App for Studio {
         ) {
             self.generation.sync_restrictions(&self.restrictions);
         }
-        let model_view_visible = self.camera.enabled
+        let seed_view_visible = self.visible_generated_tab()
+            .and_then(|id| self.seed_scenes.get(&id)).is_some_and(|scene| scene.camera.enabled);
+        let model_view_visible = seed_view_visible || self.camera.enabled
             && self.preview.is_some()
             && self.texture.is_some()
             && !self.generation.busy()
@@ -2656,6 +2692,10 @@ impl eframe::App for Studio {
         self.show_monument_dialog(&ctx);
         self.terrain_projection.end_frame(&ctx);
         self.camera.end_frame(&ctx);
+        self.seed_scenes.retain(|id, scene| {
+            scene.camera.end_frame(&ctx);
+            dock.find_tab(&Tab::Generated(*id)).is_some()
+        });
         self.dock = if self.reset_layout {
             self.reset_layout = false;
             let mut layout = layout();
@@ -2673,7 +2713,7 @@ impl eframe::App for Studio {
         self.generation.finish_preview_frame(&self.dock);
         self.installation_setup_window(&ctx);
         self.recipe_settings_window(&ctx);
-        self.recipe_tabs.rename_window(&ctx);
+        self.tick_recipe_library(&ctx);
         self.settings_window(&ctx);
         self.support_snapshot_window(&ctx);
         let restart_blocker = if self.generation_in_progress() {
@@ -2831,6 +2871,8 @@ mod tests {
             map_archive: Default::default(),
             saved: project.clone(),
             recipe_tabs: Default::default(),
+            recipe_library: Default::default(),
+            seed_scenes: Default::default(),
             preview: Some(Preview {
                 ordered_terrain: false,
                 raw_source: None,
@@ -5441,7 +5483,7 @@ mod tests {
         assert!(app.stage_texture.is_none());
         assert_eq!(app.generation_progress, Some("Refinement"));
         assert_eq!(app.stage_image.as_ref().unwrap().pixels[0], Color32::RED);
-        app.show_tab(Tab::Map);
+        app.show_tab(Tab::Home);
         app.apply_tab_request();
         assert!(app.working_map_visible());
         let _ = frame(&ctx, &mut app, Vec::new());

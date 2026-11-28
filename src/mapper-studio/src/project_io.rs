@@ -219,6 +219,7 @@ impl Studio {
                 self.saved = *recipe;
                 self.project_io.saved_generation = revision;
                 self.project_io.saved_recipes = recipes_revision;
+                self.remember_recent_project(path.clone());
                 self.path = Some(path);
                 self.status = "Project saved".into();
                 if let Some(action) = followup {
@@ -251,8 +252,11 @@ impl Studio {
         let Some(opened) = self.project_io.opened.take() else {
             return;
         };
-        self.replace_project(opened.recipe, Some(opened.path));
+        self.remember_recent_project(opened.path.clone());
+        let path = opened.path;
+        self.replace_project(opened.recipe, Some(path.clone()));
         self.recipe_tabs.book = opened.recipes;
+        self.restore_project_recipe_links(&path);
         self.recipe_tabs.rebuild_tabs(&mut self.dock);
         self.generation.replace_preserving_worker_budgets(opened.generation);
         self.generation.sync_restrictions(&self.restrictions);

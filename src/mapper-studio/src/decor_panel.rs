@@ -224,11 +224,22 @@ impl DecorPanel {
 
     }
 
+    #[cfg(test)]
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
         project: &mut Project,
         pins: Option<mapper_studio::AssetIdentity>,
+    ) {
+        self.show_with_rules(ui, project, pins, |_, _| {});
+    }
+
+    pub fn show_with_rules(
+        &mut self,
+        ui: &mut egui::Ui,
+        project: &mut Project,
+        pins: Option<mapper_studio::AssetIdentity>,
+        rules: impl FnOnce(&mut egui::Ui, &mut Project),
     ) {
         let native = mapper_studio::native_preview::is_native(&project.preview_engine);
         let enabled = project.decoration.is_some() || self.pending_decoration.is_some();
@@ -236,7 +247,7 @@ impl DecorPanel {
         let ctx = ui.ctx().clone();
         let (header, changed) = super::panels::recipe_section(
             ui, "Scenery & objects", enabled, enabled || ready, false,
-            "Place scenery and roadside objects using installation data.",
+            "Place scenery and roadside objects and control what the recipe includes.",
         );
         if let Some(enabled) = changed {
             self.live_error = None;
@@ -247,7 +258,7 @@ impl DecorPanel {
                         next.check_monument_assets(&pins.catalog_sha256, &pins.bindings_sha256)
                     {
                         self.message = e;
-                        header.body(|ui| ui.small(&self.message));
+                        header.body(|ui| { ui.small(&self.message); rules(ui, project); });
                         return;
                     }
                     next.monument_assets.get_or_insert(pins);
@@ -270,7 +281,7 @@ impl DecorPanel {
                 self.live_task.cancel();
             }
         }
-        header.body(|ui| self.scenery_settings(ui, project));
+        header.body(|ui| { self.scenery_settings(ui, project); rules(ui, project); });
     }
 
     fn scenery_settings(&mut self, ui: &mut egui::Ui, project: &mut Project) {

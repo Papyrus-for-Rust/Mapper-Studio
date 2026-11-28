@@ -42,6 +42,10 @@ impl ReadyIdentities {
         Ok(())
     }
 
+    pub fn prefab_paths(&self) -> impl Iterator<Item = &str> {
+        self.source.prefabs.keys().map(String::as_str)
+    }
+
     pub fn prefab_id(&self, path: &str) -> Option<u32> {
         self.source.prefabs.get(path).copied()
     }

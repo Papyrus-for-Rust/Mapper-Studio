@@ -140,6 +140,40 @@ impl Snapshot {
         }
         Ok(Arc::new(Self { file }))
     }
+    /// Read a bounded flight grid without keeping the accepted map layers in memory.
+    pub fn coarse_height(
+        &self, size: u32, cancel: &impl Fn() -> bool,
+    ) -> Result<Option<(usize, Vec<i16>)>, String> {
+        let (resolution, _) = native_layers::dimensions(size)?;
+        let side = resolution.min(257);
+        let sample = |index: usize| index * (resolution - 1) / (side - 1);
+        let input = File::open(self.file.as_ref()).map_err(|error| error.to_string())?;
+        let mut decoder = flate2::read::GzDecoder::new(BufReader::new(input));
+        let mut header = [0; 48];
+        decoder.read_exact(&mut header).map_err(|error| error.to_string())?;
+        if &header[..8] != MAGIC || &header[24..28] != b"PNF1"
+            || u32::from_le_bytes(header[28..32].try_into().unwrap()) != size
+            || u32::from_le_bytes(header[40..44].try_into().unwrap()) as usize != resolution
+        {
+            return Err("Retained terrain does not match this map.".into());
+        }
+        let mut heights = Vec::with_capacity(side * side);
+        let mut row = vec![0; resolution * 2];
+        let mut next = 0;
+        for z in 0..resolution {
+            if cancel() { return Ok(None); }
+            decoder.read_exact(&mut row).map_err(|error| error.to_string())?;
+            if z == sample(next) {
+                heights.extend((0..side).map(|x| {
+                    let at = sample(x) * 2;
+                    i16::from_le_bytes([row[at], row[at + 1]])
+                }));
+                next += 1;
+            }
+        }
+        Ok(Some((side, heights)))
+    }
+
     pub fn capture(
         maps: &Composed,
         cancel: impl Fn() -> bool,

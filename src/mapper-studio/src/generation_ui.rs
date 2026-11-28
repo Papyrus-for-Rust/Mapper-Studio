@@ -14,6 +14,8 @@ pub(super) mod persistence;
 mod monument_edits;
 mod queue_execution;
 mod queue_table;
+mod seed_scene;
+pub(super) use seed_scene::Scene as SeedScene;
 pub(super) use monument_edits::MonumentTemplate;
 use monument_edits::MonumentChanges;
 
@@ -739,11 +741,11 @@ impl Studio {
         let tab = Tab::Generated(id);
         let Some(path) = self.dock.find_tab(&tab) else { return; };
         let has_other_map = self.dock.iter_all_tabs()
-            .any(|(_, item)| matches!(item, Tab::Map | Tab::Generated(_)) && *item != tab);
+            .any(|(_, item)| matches!(item, Tab::Home | Tab::Generated(_)) && *item != tab);
         if has_other_map {
             self.dock.remove_tab(path);
         } else if let Ok(leaf) = self.dock.leaf_mut(path.node_path()) {
-            leaf.tabs[path.tab.0] = Tab::Map;
+            leaf.tabs[path.tab.0] = Tab::Home;
         }
     }
 
@@ -819,6 +821,7 @@ impl Studio {
         let row = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
         ui.allocate_ui_with_layout(row, egui::Layout::right_to_left(egui::Align::Center), |ui| {
             map_seed_menu(ui, &self.generation.queue[index].recipe, false);
+            seed_scene::view_toggle(ui, &mut false, false);
             if (active || extra_active) && ui.checkbox(&mut self.live_generation, "Live")
                 .on_hover_text("Show map previews as generation stages finish.")
                 .changed() && !self.live_generation
@@ -2454,7 +2457,7 @@ impl Studio {
             let leaf = self.dock.leaf(path).ok()?;
             match leaf.tabs.get(leaf.active.0) {
                 Some(Tab::Generated(id)) => Some(Some(*id)),
-                Some(Tab::Map) => Some(None),
+                Some(Tab::Home) => Some(None),
                 _ => None,
             }
         };
@@ -2470,8 +2473,20 @@ impl Studio {
         let Some(map) = self.generation.results.iter_mut().find(|map| map.id == id) else {
             return false;
         };
+        let available_3d = map.archive.as_ref().is_some_and(|archive| archive.image.is_some()) && map.overview.is_some();
+        let scene = self.seed_scenes.entry(id).or_default();
+        for (enabled, label) in [(false, "2D map"), (true, "3D terrain")] {
+            if ui.add_enabled(!enabled || available_3d,
+                egui::Button::selectable(scene.camera.enabled == enabled, label)).clicked()
+            {
+                scene.camera.enabled = enabled;
+                ui.close();
+            }
+        }
+        ui.separator();
         if ui.button("Fit map").clicked() {
             map.fit_map();
+            scene.camera.reset();
             ui.close();
         }
         ui.separator();
@@ -2628,8 +2643,8 @@ impl Studio {
     }
     pub(super) fn map_tabs_menu(&mut self, ui: &mut egui::Ui) {
         let mut open = None;
-        if ui.button("Recipe preview").clicked() {
-            open = Some(Tab::Map);
+        if ui.button("Home").clicked() {
+            open = Some(Tab::Home);
         }
         for result in &self.generation.results {
             if ui
@@ -2905,6 +2920,10 @@ impl Studio {
             ui.label("This map is no longer in the workspace.");
             return;
         };
+        let scene_3d = result.archive.as_ref().and_then(|archive| archive.image.as_ref())
+            .cloned().zip(result.overview.clone());
+        let scene = self.seed_scenes.entry(id).or_default();
+        if scene_3d.is_none() { scene.camera.enabled = false; }
         let edit = self.generation.edits.entry(id).or_default();
         let can_move = result.missing == 0 && result.archive_issue.is_empty()
             && edit.job.is_none() && matches!(result.image, Some(Ok(_)));
@@ -2921,25 +2940,29 @@ impl Studio {
         let has_issue = issue_detail.is_some() || !result.archive_issue.is_empty();
         let has_action = edit.job.is_some() || has_draft;
         let narrow_issue = ui.available_width() < 300.;
-        let fit_in_menu = has_action && ui.available_width() < if has_issue { 250. } else { 215. };
+        let fit_in_menu = ui.available_width() < if has_issue && has_action { 315. } else { 265. };
         let viewport = ui.available_rect_before_wrap().intersect(ui.clip_rect());
         let floating = viewport.width() >= 680.;
         let toolbar = |ui: &mut egui::Ui| {
             workbench_style::map_glass_controls(ui);
             workbench_style::map_glass().show(ui, |ui| ui.horizontal(|ui| {
+            seed_scene::view_toggle(ui, &mut scene.camera.enabled, scene_3d.is_some());
+            ui.separator();
             if !fit_in_menu && ui.button("Fit").on_hover_text("Fit the whole map in the viewport.").clicked() {
                 result.fit_map();
+                scene.camera.reset();
             }
-            if !compact {
+            if !compact && !scene.camera.enabled {
                 ui.toggle_value(&mut result.grid, "Grid");
                 ui.toggle_value(&mut result.no_build, "No-build").on_hover_text("Show no-build zones.");
             }
             ui.menu_button("View", |ui| {
                 if fit_in_menu && ui.button("Fit map").clicked() {
                     result.fit_map();
+                    scene.camera.reset();
                     ui.close();
                 }
-                if compact {
+                if compact && !scene.camera.enabled {
                     ui.checkbox(&mut result.grid, "Grid");
                     ui.checkbox(&mut result.no_build, "No-build zones");
                     ui.separator();
@@ -3155,6 +3178,23 @@ impl Studio {
             edit.last_issue = None;
             edit.apply_error = None;
             self.generation.revision += 1;
+        }
+        if scene.camera.enabled && let Some((snapshot, overview)) = scene_3d {
+            edit.cancel_drag();
+            edit.paths.cancel_gesture();
+            edit.canvas = None;
+            let source = self.show_monuments.then(|| self.monuments.model_source()).flatten()
+                .filter(|_| self.project.installation == result.recipe.installation);
+            let models = source.into_iter().flat_map(|source| {
+                result.monuments.iter().filter_map(move |monument| {
+                    let prefab = source.prefabs.get(monument.prefab.as_deref()?)?;
+                    (!prefab.model.triangles.is_empty()).then(|| terrain_3d::ModelInstance::yaw(
+                        &prefab.model, monument.position, monument.yaw,
+                    ))
+                })
+            }).collect::<Vec<_>>();
+            scene.draw(ui, result.recipe.size, snapshot, overview, &models);
+            return;
         }
         let (outer, response) = ui.allocate_exact_size(
             ui.available_size().max(Vec2::splat(1.)),
@@ -4831,19 +4871,19 @@ mod tests {
     fn closing_the_last_map_restores_the_recipe_preview_in_its_dock() {
         let ctx = egui::Context::default();
         let mut app = super::super::tests::fixture(&ctx);
-        let anchor = app.dock.find_tab(&Tab::Map).unwrap();
+        let anchor = app.dock.find_tab(&Tab::Home).unwrap();
         for tab in [Tab::Generated(1), Tab::Generated(2)] {
             app.show_tab(tab);
             app.apply_tab_request();
         }
-        assert!(app.dock.find_tab(&Tab::Map).is_none());
+        assert!(app.dock.find_tab(&Tab::Home).is_some());
         let mut dock = std::mem::replace(&mut app.dock, DockState::new(vec![]));
         let mut tabs = Tabs::new(&mut app, Some(2), &dock);
         tabs.on_close(&mut Tab::Generated(1));
         tabs.on_close(&mut Tab::Generated(1));
         tabs.on_close(&mut Tab::Generated(2));
         tabs.finish(&mut dock);
-        assert_eq!(dock.find_tab(&Tab::Map), Some(anchor));
+        assert_eq!(dock.find_tab(&Tab::Home), Some(anchor));
     }
 
     #[test]
@@ -5804,7 +5844,7 @@ mod tests {
         let id = app.generation.results[0].id;
         let texture = app.generation.results[0].image.as_ref().unwrap().as_ref().unwrap().id();
         let path = app.dock.find_tab(&Tab::Generated(id)).unwrap();
-        assert!(app.dock.find_tab(&Tab::Map).is_none());
+        assert!(app.dock.find_tab(&Tab::Home).is_some());
         assert_eq!(path.node, app.map_tab_path().unwrap().node);
         app.dock.remove_tab(path);
         app.show_tab(Tab::Generated(id));
@@ -6181,7 +6221,7 @@ mod tests {
         let split = Tab::Generated(2);
         app.show_tab(central);
         app.apply_tab_request();
-        assert!(app.dock.find_tab(&Tab::Map).is_none());
+        assert!(app.dock.find_tab(&Tab::Home).is_some());
         let anchor = app.dock.find_tab(&central).unwrap();
         app.dock.main_surface_mut().split_right(anchor.node, 0.5, vec![split]);
 
@@ -6190,7 +6230,7 @@ mod tests {
             app.apply_tab_request();
             assert_eq!(app.visible_generated_tab(), Some(id));
         }
-        app.show_tab(Tab::Map);
+        app.show_tab(Tab::Home);
         app.apply_tab_request();
         assert_eq!(app.visible_generated_tab(), None);
     }
@@ -6204,7 +6244,7 @@ mod tests {
         app.dock = dock;
         app.apply_tab_request();
         let generated = app.dock.find_tab(&Tab::Generated(71)).unwrap();
-        assert!(app.dock.find_tab(&Tab::Map).is_none());
+        assert!(app.dock.find_tab(&Tab::Home).is_some());
         let map = app.map_tab_path().unwrap();
         assert_eq!(generated.node, map.node);
         assert_eq!(generated.surface, map.surface);

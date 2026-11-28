@@ -178,7 +178,7 @@ fn saving_after_a_working_map_edit_keeps_the_accepted_placement_and_recipe() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("edited.mapper");
     let mut app = generated(&ctx);
-    app.show_tab(Tab::Map);
+    app.show_tab(Tab::Home);
     app.apply_tab_request();
     app.project.targets[0].x += 20.;
     app.start_placement(&ctx);

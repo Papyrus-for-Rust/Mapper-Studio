@@ -93,12 +93,15 @@ impl Studio {
     }
 
     pub(super) fn map_tab_path(&self) -> Option<egui_dock::TabPath> {
-        self.dock.find_tab(&Tab::Map).or_else(|| {
+        self.dock.find_tab(&Tab::Home).or_else(|| {
             self.dock.find_tab_from(|tab| matches!(tab, Tab::Generated(_)))
         })
     }
 
     pub(super) fn show_tab(&mut self, tab: Tab) {
+        if let Tab::Recipe(id) = tab {
+            self.recipe_tabs.closed.remove(&id);
+        }
         self.requested_tab = Some(tab);
     }
     pub(super) fn apply_tab_request(&mut self) {
@@ -111,25 +114,23 @@ impl Studio {
         };
         if let Some(path) = self.dock.find_tab(&tab) {
             let _ = self.dock.set_active_tab(path);
-            if matches!(tab, Tab::Map | Tab::Generated(_) | Tab::Nodes) {
+            if matches!(tab, Tab::Home | Tab::Generated(_) | Tab::Nodes) {
                 self.dock.set_focused_node_and_surface(path.node_path());
             }
         } else {
             let anchor = match tab {
-                Tab::Map | Tab::Generated(_) | Tab::Nodes => self.map_tab_path(),
+                Tab::Home | Tab::Generated(_) | Tab::Nodes => self.map_tab_path(),
                 Tab::Content | Tab::Plugins => self.dock.find_tab(&Tab::Inspector),
-                Tab::Recipe(_) => self.dock.find_tab_from(|tab| matches!(tab, Tab::Recipe(_))),
+                Tab::Recipe(_) | Tab::RecipeAdd => self.dock.find_tab(&Tab::RecipeAdd),
                 other => self.dock.find_tab(&other),
             };
             if let Some(path) = anchor {
                 self.dock.set_focused_node_and_surface(path.node_path());
             }
-            if matches!(tab, Tab::Generated(_))
-                && self.dock.find_tab_from(|tab| matches!(tab, Tab::Generated(_))).is_none()
-                && let Some(path) = self.dock.find_tab(&Tab::Map)
+            if let Some(path) = anchor.filter(|_| matches!(tab, Tab::Recipe(_)))
                 && let Ok(leaf) = self.dock.leaf_mut(path.node_path())
             {
-                leaf.tabs[path.tab.0] = tab;
+                leaf.tabs.insert(path.tab.0, tab);
                 leaf.active = path.tab;
             } else {
                 self.dock.push_to_focused_leaf(tab);
@@ -204,11 +205,6 @@ impl Studio {
         } else {
             self.undo_recipe(redo);
         }
-    }
-    fn fit_map(&mut self) {
-        self.zoom = 1.;
-        self.pan = Vec2::ZERO;
-        self.camera.reset();
     }
     pub(super) fn toolbar(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
@@ -409,28 +405,7 @@ impl Studio {
             }
             "View" => {
                 ui.menu_button("Maps", |ui| self.map_tabs_menu(ui));
-                if self.generated_view_controls(ui) {
-                    return;
-                }
-                ui.selectable_value(&mut self.camera.enabled, false, "2D map");
-                if ui
-                    .selectable_value(&mut self.camera.enabled, true, "3D terrain")
-                    .clicked()
-                {
-                    self.topology_tool.enabled = false;
-                    self.topology_tool.cancel_stroke();
-                }
-                if ui.button("Fit map").clicked() {
-                    ui.close();
-                    self.fit_map();
-                }
-                ui.separator();
-                ui.checkbox(&mut self.grid, "Grid");
-                ui.checkbox(&mut self.show_no_build, "No-build zones");
-                ui.checkbox(&mut self.show_monuments, "Monument footprints");
-                ui.checkbox(&mut self.show_preferences, "Placement guides")
-                    .on_hover_text("Amber shows the requested area. The line leads to where Mapper placed the monument.");
-                ui.checkbox(&mut self.show_decoration, "Scenery models (3D)");
+                self.generated_view_controls(ui);
             }
             "Generate" => {
                 let idle = !self.generation_in_progress();
@@ -615,7 +590,7 @@ mod tests {
                 ),
                 (
                     "View",
-                    &["2D map", "3D terrain", "Grid", "No-build zones"][..],
+                    &["Maps"][..],
                     Some("Grid"),
                 ),
                 (

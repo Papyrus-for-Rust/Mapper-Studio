@@ -684,7 +684,7 @@ mod tests {
         render(&mut studio, recipe_size, vec![], true);
         for section in ["Stage seeds", "Terrain", "Custom tiers", "Biomes", "Custom mix", "Monuments", "Terrain composition",
             "Water & rivers", "Custom river settings", "Roads & trails", "Advanced routing", "Rails",
-            "Rail settings", "Scenery & objects", "Landmarks", "Content rules", "Prefab blocklist", "Output"] {
+            "Rail settings", "Scenery & objects", "Landmarks", "Prefab blocklist", "Output"] {
             let frame = render(&mut studio, recipe_size, vec![], true);
             let pos = frame.shapes.iter().rev().find_map(|shape| match &shape.shape {
                 egui::Shape::Text(text) if text.galley.job.text == section => {

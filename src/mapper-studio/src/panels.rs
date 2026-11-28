@@ -52,14 +52,13 @@ pub(super) enum RecipeTab {
     Rails,
     Scenery,
     Landmarks,
-    Content,
     Output,
 }
 
 impl RecipeTab {
-    const ALL: [Self; 12] = [
+    const ALL: [Self; 11] = [
         Self::Map, Self::Seeds, Self::Terrain, Self::Biomes, Self::Monuments, Self::Water,
-        Self::Roads, Self::Rails, Self::Scenery, Self::Landmarks, Self::Content, Self::Output,
+        Self::Roads, Self::Rails, Self::Scenery, Self::Landmarks, Self::Output,
     ];
 
     fn label(self) -> &'static str {
@@ -74,10 +73,138 @@ impl RecipeTab {
             Self::Rails => "Rails",
             Self::Scenery => "Scenery & objects",
             Self::Landmarks => "Landmarks",
-            Self::Content => "Content rules",
             Self::Output => "Output",
         }
     }
+
+    fn matches(self, query: &str) -> bool {
+        let keywords = match self {
+            Self::Map => "size master seed randomize snapping magnet",
+            Self::Seeds => "stage seeds override decoration topology",
+            Self::Terrain => "height mountains cliffs islands erosion tiers ocean shoreline rocks",
+            Self::Biomes => "arctic temperate arid jungle temperatures rotation biome mix",
+            Self::Monuments => "outpost placement custom layout composition",
+            Self::Water => "lakes river mouths ocean",
+            Self::Roads => "ring roads trails roadside paths",
+            Self::Rails => "train tracks ring rail",
+            Self::Scenery => "content rules prefab blocklist car wrecks powerlines tunnels rail build roads beach spawns rocks trees",
+            Self::Landmarks => "oasis lake canyon island",
+            Self::Output => "filename cargo route webhook export",
+        };
+        let label = self.label().to_lowercase();
+        query.split_whitespace().all(|word| label.contains(word) || keywords.contains(word))
+    }
+}
+
+fn content_rules(
+    ui: &mut egui::Ui,
+    options: &mut mapper_studio::recipe_options::Options,
+    identities: Option<&mapper_studio::client_preparation::ReadyIdentities>,
+    catalog: Option<&mapper_studio::prefab_assets::Catalog>,
+) {
+    generation_rule(ui, "Rail tunnels", &mut options.underground_tunnels,
+        "Generate underground tunnels when the installation supports them.",
+        "Skip underground tunnels.",
+        "Generate tunnels on maps with compatible monument and tunnel data.");
+    for (name, exclusion, yes, no, default) in [
+        ("Car wrecks", &mut options.block_car_wrecks,
+            "Allow car wreck placements.", "Exclude car wreck prefabs from the map.",
+            "Use standard car wreck placement."),
+        ("Road powerlines", &mut options.remove_road_powerlines,
+            "Allow roadside powerlines and substations.", "Exclude roadside powerlines and substations.",
+            "Use standard roadside powerline placement."),
+        ("Large powerlines", &mut options.remove_large_powerlines,
+            "Allow the large powerline network.", "Exclude the large powerline network.",
+            "Use standard large powerline placement."),
+    ] {
+        if let Some(include) = generation_override(ui, name, exclusion.map(|value| !value), yes, no, default) {
+            *exclusion = include.map(|value| !value);
+        }
+    }
+    generation_rule(ui, "Build on roads", &mut options.build_on_roads,
+        "Remove Road topology on export. Rail and monument restrictions stay active. The companion plugin also handles road collider checks.",
+        "Keep Road topology and its construction restrictions.",
+        "Keep standard road construction restrictions.");
+    generation_rule(ui, "Jungle spawns", &mut options.jungle_beach_spawns,
+        "Blend a spawn-compatible biome into eligible jungle beach cells.",
+        "Skip the jungle beach spawn adjustment.",
+        "Use standard beach spawn rules.");
+    prefab_blocklist(ui, options, identities, catalog);
+}
+
+fn prefab_blocklist(
+    ui: &mut egui::Ui,
+    options: &mut mapper_studio::recipe_options::Options,
+    identities: Option<&mapper_studio::client_preparation::ReadyIdentities>,
+    catalog: Option<&mapper_studio::prefab_assets::Catalog>,
+) {
+    let count = options.prefab_blocklist.len();
+    egui::CollapsingHeader::new(format!("Prefab blocklist ({count})"))
+        .id_salt("prefab-blocklist")
+        .show(ui, |ui| {
+            let id = ui.id().with("prefab-block-entry");
+            let mut entry = ui.data(|data| data.get_temp::<String>(id)).unwrap_or_default();
+            let mut error = ui.data(|data| data.get_temp::<String>(id.with("error"))).unwrap_or_default();
+            let (apply, edited) = ui.horizontal(|ui| {
+                let width = (ui.available_width() - 54.).max(32.);
+                let field = ui.add(egui::TextEdit::singleline(&mut entry)
+                    .char_limit(220).desired_width(width).hint_text("Find a prefab or enter a rule"));
+                let enter = field.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+                let add = ui.add_enabled(!entry.trim().is_empty(), egui::Button::new("Block"))
+                    .on_hover_text("Block a full asset path or an exact prefab name.");
+                (add.clicked() || enter, field.changed())
+            }).inner;
+            if edited { error.clear(); }
+            let term = entry.trim().replace('\\', "/").to_ascii_lowercase();
+            let mut chosen = None;
+            if term.len() >= 2 && !apply {
+                let candidates = identities.map(|source| source.prefab_paths().filter(|path| {
+                    path.contains(&term) && !options.prefab_blocklist.iter().any(|rule| rule == path)
+                }).take(8).map(str::to_owned).collect::<Vec<_>>())
+                .unwrap_or_else(|| {
+                    let mut paths = catalog.into_iter().flat_map(|catalog| catalog.entries.keys())
+                        .filter(|path| path.contains(&term) && !options.prefab_blocklist.contains(path))
+                        .collect::<Vec<_>>();
+                    paths.sort_unstable();
+                    paths.into_iter().take(8).cloned().collect()
+                });
+                for path in candidates {
+                    let label = path.rsplit('/').next().unwrap_or(&path);
+                    if ui.add(egui::Button::new(label).truncate()).on_hover_text(&path).clicked() {
+                        chosen = Some(path);
+                    }
+                }
+            }
+            if apply || chosen.is_some() {
+                error = options.add_prefab(chosen.as_deref().unwrap_or(&entry)).err().unwrap_or_default();
+                if error.is_empty() { entry.clear(); }
+            }
+            if !error.is_empty() {
+                ui.colored_label(ui.visuals().error_fg_color, &error);
+            }
+            ui.data_mut(|data| {
+                data.insert_temp(id, entry);
+                data.insert_temp(id.with("error"), error);
+            });
+            if options.prefab_blocklist.is_empty() {
+                ui.weak("No prefabs blocked.");
+            }
+            let mut remove = None;
+            for (index, rule) in options.prefab_blocklist.iter().enumerate() {
+                ui.push_id(rule, |ui| {
+                    ui.horizontal(|ui| {
+                        let width = (ui.available_width() - 28.).max(32.);
+                        ui.add_sized([width, 22.], egui::Label::new(rule).truncate()).on_hover_text(rule);
+                        if ui.small_button("×").on_hover_text("Remove this prefab rule").clicked() {
+                            remove = Some(index);
+                        }
+                    });
+                });
+            }
+            if let Some(index) = remove {
+                options.prefab_blocklist.remove(index);
+            }
+        });
 }
 
 const RECIPE_TAB_CONTENT: &str = "mapper-recipe-tab-content";
@@ -96,62 +223,39 @@ impl Studio {
     pub(super) fn recipe_controls(&mut self, ui: &mut egui::Ui) {
         let id = self.recipe_tabs.editor();
         let recovery = if id == self.recipe_tabs.active() { self.generation.recipe_recovery.take() } else { None };
-        let jump_button = ui.horizontal(|ui| {
+        let search_id = ui.id().with(("recipe-search", id));
+        let mut query = ui.data(|data| data.get_temp::<String>(search_id)).unwrap_or_default();
+        ui.horizontal(|ui| {
             let width = (ui.available_width() - workbench_style::SETTINGS_BUTTON_WIDTH
-                - 22. - 2. * ui.spacing().item_spacing.x).max(1.);
-            let jump = ui.add_sized([width, 30.], egui::Button::new(
-            egui::Atoms::new(("Jump to", egui::Atom::grow(), egui::Atom::custom(
-                ui.id().with("recipe-jump-chevron"), Vec2::splat(12.),
-            ))),
-            ).corner_radius(8).stroke(ui.visuals().window_stroke));
+                - ui.spacing().item_spacing.x).max(1.);
+            ui.add_sized([width, 30.], egui::TextEdit::singleline(&mut query)
+                .char_limit(100).hint_text("Search recipe settings"));
             if workbench_style::settings_button(ui, "Recipe settings")
                 .on_hover_text("Manage the recipe by topic.").clicked()
             {
                 self.recipe_tabs.settings_owner = Some(id);
                 self.recipe_settings_open = true;
             }
-            let add = ui.add_enabled(self.recipe_tabs.can_add(), egui::Button::new("+").min_size(egui::vec2(22., 24.)))
-                .on_hover_text("New recipe")
-                .on_disabled_hover_text("This project has reached its recipe limit.");
-            add.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, add.enabled(), "New recipe"));
-            if add.clicked() {
-                self.recipe_tabs.pending_new = Some((id, false));
-            }
-            jump
-        }).inner;
-        let center = jump_button.rect.right_center() - egui::vec2(13., 0.);
-        ui.painter().add(egui::Shape::line(
-            vec![center + egui::vec2(-3., -1.), center + egui::vec2(0., 2.),
-                center + egui::vec2(3., -1.)],
-            ui.style().interact(&jump_button).fg_stroke,
-        ));
-        let jump = egui::Popup::menu(&jump_button).width(jump_button.rect.width())
-            .show(|ui| {
-                let height = (ui.ctx().content_rect().height() - 48.).clamp(64., 320.);
-                egui::ScrollArea::vertical().max_height(height).show(ui, |ui| {
-                    let mut target = None;
-                    for topic in RecipeTab::ALL.into_iter().skip(1) {
-                        let name = topic.label();
-                        if ui.button(name).clicked() {
-                            target = Some(name);
-                            ui.close();
-                        }
-                    }
-                    target
-                }).inner
-            }).and_then(|popup| popup.inner);
+        });
+        ui.data_mut(|data| data.insert_temp(search_id, query.clone()));
         ui.add_space(7.);
+        let mut found = false;
+        let terms = query.trim().to_lowercase();
         let scroll = egui::ScrollArea::vertical().animated(ui.style().animation_time > 0.);
         scroll.show(ui, |ui| {
-            let jump_id = recipe_jump_id(ui);
-            if let Some(name) = jump {
-                ui.data_mut(|data| data.insert_temp(jump_id, name));
-            }
             for topic in RecipeTab::ALL {
+                if !topic.matches(&terms) { continue; }
+                found = true;
+                if !terms.is_empty() {
+                    open_recipe_section(ui, topic.label());
+                }
                 self.recipe_topic(ui, topic, recovery);
                 if topic == RecipeTab::Map {
                     ui.add_space(7.);
                 }
+            }
+            if !found {
+                ui.weak("No recipe settings match your search.");
             }
         });
     }
@@ -163,7 +267,7 @@ impl Studio {
         use super::settings_dialog::{self, Icon};
         let icons = [
             Icon::Globe, Icon::Seed, Icon::Terrain, Icon::Biomes, Icon::Monument, Icon::Water,
-            Icon::Road, Icon::Rail, Icon::Objects, Icon::Pin, Icon::Rules, Icon::Output,
+            Icon::Road, Icon::Rail, Icon::Objects, Icon::Pin, Icon::Output,
         ];
         let pages = RecipeTab::ALL.into_iter().zip(icons)
             .map(|(tab, icon)| (tab, tab.label(), icon));
@@ -218,9 +322,15 @@ impl Studio {
             RecipeTab::Rails => self.rails.show(ui, &mut self.project, recovery == Some(RecipeSection::Rails)),
             RecipeTab::Scenery => {
                 let pins = self.recipe_asset_pins();
-                self.decoration_panel.show(ui, &mut self.project, pins);
+                let catalog = self.prefabs.catalog(&self.project);
+                let identities = self.source.bound_root_ref(&self.project)
+                    .and_then(|root| self.prefabs.prepared_identities(&self.project, root));
+                self.decoration_panel.show_with_rules(ui, &mut self.project, pins, |ui, project| {
+                    ui.separator();
+                    content_rules(ui, &mut project.options, identities.as_deref(), catalog.as_deref());
+                });
             }
-            RecipeTab::Landmarks | RecipeTab::Content | RecipeTab::Output => self.additional_recipe_options(ui, topic),
+            RecipeTab::Landmarks | RecipeTab::Output => self.additional_recipe_options(ui, topic),
         }
     }
 
@@ -295,31 +405,24 @@ impl Studio {
                 .gap(1.)
                 .close_behavior(egui::PopupCloseBehavior::IgnoreClicks)
                 .show(|ui| {
-                    egui::Grid::new("map-size-controls").show(ui, |ui| {
-                        let size_label = ui.label("Map size");
-                        let size = ui.add(Self::map_size_value(&mut self.project.size).suffix(" m"))
-                            .labelled_by(size_label.id);
-                        ui.end_row();
-
-                        let snap_label = ui.label(if next.enabled() { "Snap distance" } else { "Snap distance (off)" });
-                        let step = ui.add(egui::DragValue::new(&mut distance)
+                    ui.horizontal(|ui| {
+                        let label = ui.label(if next.enabled() { "Snap distance" } else { "Snap distance (off)" });
+                        ui.add(egui::DragValue::new(&mut distance)
                             .range(1..=MapSizeSnap::MAX_DISTANCE)
                             .speed(1.)
                             .suffix(" m")
                             .update_while_editing(false))
-                            .labelled_by(snap_label.id);
-                        ui.end_row();
-                        (size, step)
+                            .labelled_by(label.id)
                     }).inner
                 });
             if let Some(panel) = panel {
-                let (size, step) = panel.inner;
+                let step = panel.inner;
                 if step.changed() && distance != next.distance() {
                     next = next.with_distance(distance);
                 }
                 // Draw once after the pointer leaves so a click outside can commit a typed value.
                 let keep_open = response.hovered() || response.gained_focus() || over_popup
-                    || size.has_focus() || size.dragged() || step.has_focus() || step.dragged();
+                    || step.has_focus() || step.dragged();
                 ui.ctx().data_mut(|data| {
                     if keep_open {
                         data.insert_temp(popup_state, panel.response.rect);
@@ -465,79 +568,6 @@ impl Studio {
                         "Skip every variant in this landmark family.",
                         "Use the normal landmark selection for this installation and terrain.");
                 }
-            });
-        }
-        if topic == RecipeTab::Content {
-            recipe_disclosure(ui, "Content rules", "Control tunnels, roadside objects, building restrictions, and beach spawns.", |ui| {
-                generation_rule(ui, "Rail tunnels", &mut options.underground_tunnels,
-                    "Generate underground tunnels when the installation supports them.",
-                    "Skip underground tunnels.",
-                    "Generate tunnels on maps with compatible monument and tunnel data.");
-                for (name, exclusion, yes, no, default) in [
-                    ("Car wrecks", &mut options.block_car_wrecks,
-                        "Allow car wreck placements.", "Exclude car wreck prefabs from the map.",
-                        "Use standard car wreck placement."),
-                    ("Road powerlines", &mut options.remove_road_powerlines,
-                        "Allow roadside powerlines and substations.", "Exclude roadside powerlines and substations.",
-                        "Use standard roadside powerline placement."),
-                    ("Large powerlines", &mut options.remove_large_powerlines,
-                        "Allow the large powerline network.", "Exclude the large powerline network.",
-                        "Use standard large powerline placement."),
-                ] {
-                    if let Some(include) = generation_override(ui, name, exclusion.map(|value| !value), yes, no, default) {
-                        *exclusion = include.map(|value| !value);
-                    }
-                }
-                generation_rule(ui, "Build on roads", &mut options.build_on_roads,
-                    "Remove Road topology on export. Rail and monument restrictions stay active. The companion plugin also handles road collider checks.",
-                    "Keep Road topology and its construction restrictions.",
-                    "Keep standard road construction restrictions.");
-                generation_rule(ui, "Jungle spawns", &mut options.jungle_beach_spawns,
-                    "Blend a spawn-compatible biome into eligible jungle beach cells.",
-                    "Skip the jungle beach spawn adjustment.",
-                    "Use standard beach spawn rules.");
-                ui.collapsing("Prefab blocklist", |ui| {
-                    let id = ui.id().with("prefab-block-entry");
-                    let mut entry = ui.data(|data| data.get_temp::<String>(id)).unwrap_or_default();
-                    let mut error = ui.data(|data| data.get_temp::<String>(id.with("error")))
-                        .filter(|message| !message.is_empty());
-                    let apply = ui.horizontal(|ui| {
-                        let width = (ui.available_width() - 46.).max(32.);
-                        let field = ui.add(egui::TextEdit::singleline(&mut entry)
-                            .desired_width(width).hint_text("Prefab name or path"));
-                        let enter = field.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
-                        ui.add_enabled(!entry.trim().is_empty(), egui::Button::new("Add")).clicked() || enter
-                    }).inner;
-                    if apply {
-                        error = options.add_prefab(&entry).err();
-                        if error.is_none() {
-                            entry.clear();
-                        }
-                    }
-                    if let Some(ref message) = error {
-                        ui.colored_label(ui.visuals().error_fg_color, message);
-                    }
-                    ui.data_mut(|data| {
-                        data.insert_temp(id, entry);
-                        data.insert_temp(id.with("error"), error.unwrap_or_default());
-                    });
-                    let mut remove = None;
-                    for (index, rule) in options.prefab_blocklist.iter().enumerate() {
-                        ui.push_id(index, |ui| {
-                            ui.horizontal(|ui| {
-                                let width = (ui.available_width() - 58.).max(32.);
-                                ui.add_sized([width, 22.], egui::Label::new(rule).truncate())
-                                    .on_hover_text(rule);
-                                if ui.small_button("Remove").clicked() {
-                                    remove = Some(index);
-                                }
-                            });
-                        });
-                    }
-                    if let Some(index) = remove {
-                        options.prefab_blocklist.remove(index);
-                    }
-                });
             });
         }
         if topic == RecipeTab::Output {
@@ -1268,7 +1298,6 @@ fn recipe_disclosure(ui: &mut egui::Ui, name: &str, help: &str, body: impl FnOnc
     section.body(body);
 }
 
-#[cfg(test)]
 pub(super) fn open_recipe_section(ui: &egui::Ui, name: &str) {
     let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
         ui.ctx(), recipe_section_id(ui, name), true,
@@ -1529,7 +1558,7 @@ mod tests {
                 (RecipeTab::Water, "Enabled"), (RecipeTab::Roads, "Roads require native terrain"),
                 (RecipeTab::Rails, "Rails require native terrain"),
                 (RecipeTab::Scenery, "Scenery requires native terrain"),
-                (RecipeTab::Landmarks, "Oasis"), (RecipeTab::Content, "Prefab blocklist"),
+                (RecipeTab::Landmarks, "Oasis"), (RecipeTab::Scenery, "Rail tunnels"),
                 (RecipeTab::Output, "Map filename"),
             ] {
                 let position = frame.shapes.iter().filter_map(|shape| {
@@ -1641,7 +1670,7 @@ mod tests {
     }
 
     #[test]
-    fn map_size_snap_hover_edits_both_size_and_distance() {
+    fn map_size_snap_hover_edits_only_distance() {
         let ctx = egui::Context::default();
         workbench_style::install(&ctx);
         workbench_style::set_reduced_motion(&ctx, true);
@@ -1691,6 +1720,7 @@ mod tests {
             render(app, vec![egui::Event::PointerMoved(magnet)]);
             let open = render(app, vec![]);
             assert!(recipe_text(&open, "Snap distance").is_some());
+            assert!(recipe_text(&open, "Map size").is_none());
             recipe_text(&open, &value.to_string()).unwrap_or_else(|| panic!("Missing snap distance {value} m"))
         };
         let typed = |app: &mut Studio, current, updated: &str| {
@@ -1739,12 +1769,10 @@ mod tests {
 
         let size_field = |app: &mut Studio| {
             let value = app.project.size.to_string();
-            render(app, vec![egui::Event::PointerMoved(magnet)]);
-            let open = render(app, vec![]);
-            let caption = recipe_text(&open, "Map size").unwrap();
-            let field = recipe_text(&open, &value).unwrap();
-            assert!((caption.y - field.y).abs() < 2.);
-            field
+            render(app, vec![egui::Event::PointerGone]);
+            let settings = render(app, vec![]);
+            assert!(recipe_text(&settings, "Map size").is_none());
+            recipe_text(&settings, &value).unwrap()
         };
         let point = size_field(&mut app);
         let dragged = point + egui::vec2(8., 0.);
@@ -1775,79 +1803,33 @@ mod tests {
     }
 
     #[test]
-    fn recipe_jump_opens_and_scrolls_to_sections_without_editing_the_recipe() {
-        mod snapshot { include!("../examples/support/egui_snapshot.rs"); }
+    fn recipe_search_filters_and_opens_matching_controls_without_editing_the_recipe() {
         let ctx = egui::Context::default();
         workbench_style::install(&ctx);
         ctx.all_styles_mut(|style| style.animation_time = 0.);
         let mut app = super::super::tests::fixture(&ctx);
-        app.project.size = 4003;
         let original = app.project.clone();
-        let size = [210, 340];
-        let mut textures = snapshot::Textures::default();
-        let mut render = |app: &mut Studio, events| {
-            let mut output = ctx.run_ui(egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(size[0] as f32, size[1] as f32))),
-                focused: true,
-                events,
-                ..Default::default()
+        let render = |app: &mut Studio, events| {
+            let mut frame = ctx.run_ui(egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(250., 520.))),
+                focused: true, events, ..Default::default()
             }, |ui| app.recipe(ui));
-            textures.update(&output.textures_delta);
-            output.textures_delta.clear();
-            output
+            frame.textures_delta.clear();
+            frame
         };
-        let click = |point| [true, false].map(|pressed| vec![
-            egui::Event::PointerMoved(point),
-            egui::Event::PointerButton { pos: point, button: egui::PointerButton::Primary,
-                pressed, modifiers: egui::Modifiers::NONE },
-        ]);
         render(&mut app, vec![]);
         let start = render(&mut app, vec![]);
-        assert!(recipe_text(&start, "Map filename").is_none());
-        let heading = recipe_text(&start, "Stage seeds").unwrap();
-        assert!(start.shapes.iter().any(|shape| matches!(&shape.shape,
-            egui::Shape::Path(path) if path.points.len() == 3
-                && path.points[1].x > path.points[0].x
-                && (path.points[1].y - heading.y).abs() < 1.
-                && path.points[1].x < heading.x
-        )), "The collapsed chevron should point right and align with its label");
-        let mut output_snapshot = None;
-        let mut menu_snapshot = None;
-        for (section, field) in [("Output", "Map filename"), ("Roads & trails", "Roads require native terrain")] {
-            let output = render(&mut app, vec![]);
-            for events in click(recipe_text(&output, "Jump to").unwrap()) {
-                render(&mut app, events);
-            }
-            let menu = render(&mut app, vec![]);
-            for events in click(recipe_text(&menu, section).unwrap()) {
-                render(&mut app, events);
-            }
-            let settled = render(&mut app, vec![egui::Event::PointerGone]);
-            assert!(recipe_text(&settled, "Jump to").is_some());
-            assert!(recipe_text(&settled, section).is_some());
-            assert!(recipe_text(&settled, field).is_some(), "Missing {field} after opening {section}");
-            if section == "Output" {
-                output_snapshot = Some(settled);
-                menu_snapshot = Some(menu);
-            }
+        let search = recipe_text(&start, "Search recipe settings").unwrap();
+        for pressed in [true, false] {
+            render(&mut app, vec![egui::Event::PointerMoved(search), egui::Event::PointerButton {
+                pos: search, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE,
+            }]);
         }
+        render(&mut app, vec![egui::Event::Text("filename".into())]);
+        let output = render(&mut app, vec![]);
+        assert!(recipe_text(&output, "Map filename").is_some());
+        assert!(recipe_text(&output, "Roads & trails").is_none());
         assert_eq!(app.project, original);
-        let gear = start.shapes.iter().find_map(|shape| match &shape.shape {
-            egui::Shape::Circle(circle) if circle.radius == 2.25 => Some(circle.center),
-            _ => None,
-        }).expect("Recipe settings gear");
-        for events in click(gear) {
-            render(&mut app, events);
-        }
-        assert!(app.recipe_settings_open);
-        assert!(!app.settings_open);
-        if let Some(directory) = std::env::var_os("MAPPER_RECIPE_JUMP_SNAPSHOTS") {
-            for (name, frame) in [("recipe-jump-menu.png", menu_snapshot), ("recipe-jump-output.png", output_snapshot)] {
-                let image = textures.raster(&ctx, frame.unwrap(), size);
-                let path = PathBuf::from(&directory).join(name);
-                mapper_studio::image_export::write_png(&path, &image, || false).unwrap();
-            }
-        }
     }
 
     #[test]
@@ -1946,8 +1928,8 @@ mod tests {
                     egui::RawInput { screen_rect: Some(screen), events, focused: true, ..Default::default() },
                     |ui| {
                         egui::ScrollArea::vertical().show(ui, |ui| {
-                            for topic in [RecipeTab::Landmarks, RecipeTab::Content, RecipeTab::Output] {
-                                app.additional_recipe_options(ui, topic);
+                            for topic in [RecipeTab::Landmarks, RecipeTab::Scenery, RecipeTab::Output] {
+                                app.recipe_topic(ui, topic, None);
                             }
                         });
                     },
@@ -1963,7 +1945,7 @@ mod tests {
                     }]);
                 }
             };
-            for name in ["Landmarks", "Content rules", "Output"] {
+            for name in ["Landmarks", "Scenery & objects", "Output"] {
                 let output = render(&mut app, vec![]);
                 click(&mut app, &mut render, recipe_text(&output, name).unwrap());
             }
@@ -2001,7 +1983,7 @@ mod tests {
                 render(&mut app, vec![]);
             }
             for (row, choice, description) in [
-                ("Content rules", "?", "Control tunnels, roadside objects, building restrictions, and beach spawns."),
+                ("Scenery & objects", "?", "Place scenery and roadside objects and control what the recipe includes."),
                 ("Car wrecks", "No", "Exclude car wreck prefabs from the map."),
                 ("Car wrecks", "?", "Use standard car wreck placement."),
             ] {
@@ -2024,10 +2006,10 @@ mod tests {
                     assert!(recipe_text(&hover, "Generator default").is_some());
                 }
             }
-            let help = rule_choice(&output, "Content rules", "?");
+            let help = rule_choice(&output, "Scenery & objects", "?");
             click(&mut app, &mut render, help);
             render(&mut app, vec![egui::Event::PointerGone]);
-            let description = "Control tunnels, roadside objects, building restrictions, and beach spawns.";
+            let description = "Place scenery and roadside objects and control what the recipe includes.";
             let pinned = render(&mut app, vec![]);
             assert!(recipe_text(&pinned, description).is_some());
             render(&mut app, vec![egui::Event::Key {
@@ -2064,8 +2046,8 @@ mod tests {
                 focused: true, events, ..Default::default()
             }, |ui| {
                 open_recipe_section(ui, "Output");
-                for topic in [RecipeTab::Landmarks, RecipeTab::Content, RecipeTab::Output] {
-                    app.additional_recipe_options(ui, topic);
+                for topic in [RecipeTab::Landmarks, RecipeTab::Output] {
+                    app.recipe_topic(ui, topic, None);
                 }
             });
             textures.update(&output.textures_delta);
@@ -2531,7 +2513,7 @@ mod tests {
                 ctx.set_visuals(if dark { egui::Visuals::dark() } else { egui::Visuals::light() });
                 workbench_style::install(&ctx);
                 let mut app = selection_fixture(&ctx);
-                let preview_path = app.dock.find_tab(&Tab::Map).unwrap().node_path();
+                let preview_path = app.dock.find_tab(&Tab::Home).unwrap().node_path();
                 app.dock.leaf_mut(preview_path).unwrap().tabs.push(Tab::Nodes);
                 if let Some(path) = std::env::var_os("MAPPER_WORKSPACE_OVERVIEW") {
                     let file = std::io::BufReader::new(std::fs::File::open(path).unwrap());
@@ -2579,7 +2561,7 @@ mod tests {
                 let recipe_path = app.dock.find_tab(&Tab::Recipe(FIRST_RECIPE)).unwrap();
                 let recipe_bounds = app.dock.leaf(recipe_path.node_path()).unwrap().rect;
                 for (panel, name) in [
-                    (Tab::Recipe(FIRST_RECIPE), "Recipe"), (Tab::Map, "Recipe preview"),
+                    (Tab::Recipe(FIRST_RECIPE), "Recipe"), (Tab::Home, "Home"),
                     (Tab::Outliner, "Monuments"), (Tab::Inspector, "Selection"), (Tab::Queue, "Queue"),
                 ] {
                     let path = app.dock.find_tab(&panel).unwrap().node_path();
@@ -2595,7 +2577,18 @@ mod tests {
                         && recipe_bounds.contains_rect(rect.rect) => Some(rect.rect),
                     _ => None,
                 }).expect("The Generate and Batch control belongs to Recipe");
-                assert!((button.center().x - recipe_bounds.center().x).abs() <= 1.);
+                let queue_label = output.shapes.iter().find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.job.text == "Queue"
+                        && recipe_bounds.contains(text.pos) => Some(text.pos + text.galley.size() * 0.5),
+                    _ => None,
+                }).expect("The single-map Queue action belongs to Recipe");
+                let queue_button = output.shapes.iter().find_map(|shape| match &shape.shape {
+                    egui::Shape::Rect(rect) if rect.rect.contains(queue_label)
+                        && rect.rect.right() <= button.left()
+                        && (rect.rect.height() - button.height()).abs() <= 2. => Some(rect.rect),
+                    _ => None,
+                }).expect("Queue has its own button surface");
+                assert!((button.union(queue_button).center().x - recipe_bounds.center().x).abs() <= 1.);
                 assert!(recipe_bounds.bottom() - button.bottom() <= 16.);
                 if let Some(directory) = std::env::var_os("MAPPER_INSPECTOR_SNAPSHOTS") {
                     let directory = PathBuf::from(directory);
@@ -2610,15 +2603,15 @@ mod tests {
                         _ => None,
                     })
                 };
-                assert!((row("Recipe preview").unwrap() - row("Nodes").unwrap()).abs() < 2.);
+                assert!((row("Home").unwrap() - row("Nodes").unwrap()).abs() < 2.);
                 assert!(row("Master seed").unwrap() < row("Stage seeds").unwrap());
                 assert!(row("Stage seeds").unwrap() < row("Terrain").unwrap());
                 assert!(row("Terrain").unwrap() < row("Biomes").unwrap());
                 let mut left_edge = None;
                 let mut help_column = None;
                 for category in ["Terrain", "Biomes", "Monuments", "Water & rivers",
-                    "Roads & trails", "Rails", "Scenery & objects", "Stage seeds", "Landmarks", "Content rules", "Output"] {
-                    if !["Stage seeds", "Landmarks", "Content rules", "Output"].contains(&category) {
+                    "Roads & trails", "Rails", "Scenery & objects", "Stage seeds", "Landmarks", "Output"] {
+                    if !["Stage seeds", "Landmarks", "Output"].contains(&category) {
                         recipe_checkbox_position(&output, category);
                     }
                     let label = output.shapes.iter().filter_map(|shape| match &shape.shape {

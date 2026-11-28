@@ -94,7 +94,9 @@ pub(super) struct RecipeTabs {
     histories: std::collections::HashMap<u64, History>,
     work: std::collections::HashMap<u64, RecipeWork>,
     editing: Option<u64>,
-    rename: Option<(u64, String)>,
+    rename: Option<(u64, String, bool)>,
+    pub(super) closed: std::collections::BTreeSet<u64>,
+    pub(super) library_keys: std::collections::BTreeMap<u64, u64>,
     pub(super) settings_owner: Option<u64>,
     pub(super) pending_new: Option<(u64, bool)>,
 }
@@ -166,15 +168,32 @@ impl RecipeTabs {
             .book
             .entries
             .iter()
+            .filter(|entry| !self.closed.contains(&entry.id))
             .map(|entry| Tab::Recipe(entry.id))
+            .chain(std::iter::once(Tab::RecipeAdd))
             .collect();
         leaf.active = egui_dock::TabIndex(
-            self.book
-                .entries
-                .iter()
-                .position(|entry| entry.id == self.book.active)
-                .expect("the active recipe exists"),
+            leaf.tabs.iter().position(|tab| *tab == Tab::Recipe(self.book.active)).unwrap_or(0),
         );
+    }
+
+    pub(super) fn entries(&self) -> Vec<(u64, String)> {
+        self.book.entries.iter().map(|entry| (entry.id, entry.name.clone())).collect()
+    }
+
+    pub(super) fn restore_first(&mut self, name: String, key: u64) {
+        self.book.entries[0].name = name;
+        self.library_keys.insert(FIRST_RECIPE, key);
+    }
+
+    pub(super) fn close(&mut self, id: u64) {
+        self.closed.insert(id);
+        if self.editing_name(id) {
+            self.rename = None;
+        }
+        if self.settings_owner == Some(id) {
+            self.settings_owner = None;
+        }
     }
 
     pub(super) fn renaming(&self) -> bool {
@@ -182,49 +201,54 @@ impl RecipeTabs {
     }
 
     pub(super) fn begin_rename(&mut self, id: u64) {
-        self.rename = Some((id, self.name(id).to_owned()));
+        self.rename = Some((id, self.name(id).to_owned(), true));
     }
 
-    pub(super) fn rename_window(&mut self, ctx: &egui::Context) {
-        let Some((id, mut name)) = self.rename.take() else {
-            return;
-        };
-        let mut confirm = false;
-        let mut cancel = false;
-        let modal = egui::Modal::new(egui::Id::new("rename-recipe").with(id)).show(ctx, |ui| {
-            ui.heading("Rename recipe");
-            let field = ui.add(
-                egui::TextEdit::singleline(&mut name)
-                    .char_limit(MAX_NAME_CHARS)
-                    .desired_width(260.),
-            );
-            let focus = field.id.with("initial-focus");
-            if !ui.data(|data| data.get_temp::<bool>(focus).unwrap_or(false)) {
-                field.request_focus();
-                ui.data_mut(|data| data.insert_temp(focus, true));
+    pub(super) fn editing_name(&self, id: u64) -> bool {
+        self.rename.as_ref().is_some_and(|(recipe, _, _)| *recipe == id)
+    }
+
+    pub(super) fn rename_in_tab(&mut self, id: u64, response: &egui::Response) {
+        if !self.editing_name(id) { return; }
+        let Some((_, mut name, request_focus)) = self.rename.take() else { return; };
+        let mut rect = response.rect.shrink2(egui::vec2(4., 2.));
+        rect.max.x = (rect.max.x - 19.).max(rect.min.x + 22.);
+        let ctx = &response.ctx;
+        let field = egui::Area::new(egui::Id::new(("rename-recipe-tab", id)))
+            .order(egui::Order::Foreground)
+            .fixed_pos(rect.min)
+            .fade_in(false)
+            .show(ctx, |ui| {
+                ui.add_sized([rect.width(), rect.height()],
+                    egui::TextEdit::singleline(&mut name).char_limit(MAX_NAME_CHARS)
+                        .font(egui::FontId::proportional(16.)))
+            }).inner;
+        if request_focus {
+            field.request_focus();
+            if let Some(mut state) = egui::TextEdit::load_state(ctx, field.id) {
+                state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                    egui::text::CCursor::new(0), egui::text::CCursor::new(name.chars().count()),
+                )));
+                state.store(ctx, field.id);
             }
-            let valid = valid_name(name.trim());
-            ui.horizontal(|ui| {
-                confirm = ui.add_enabled(valid, egui::Button::new("Rename")).clicked()
-                    || (valid
-                        && field.lost_focus()
-                        && ui.input(|input| input.key_pressed(egui::Key::Enter)));
-                cancel = ui.button("Cancel").clicked();
-            });
-            focus
-        });
-        if confirm {
-            let entry = self.book.entry_mut(id).expect("the renamed recipe exists");
-            if entry.name != name.trim() {
-                entry.name = name.trim().into();
-                self.revision += 1;
-            }
-        } else if !cancel && !modal.should_close() {
-            self.rename = Some((id, name));
+        }
+        if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+            field.surrender_focus();
             return;
         }
-        ctx.data_mut(|data| data.remove::<bool>(modal.inner));
+        if !request_focus && (field.lost_focus() || ctx.input(|input| input.key_pressed(egui::Key::Enter))) {
+            if valid_name(name.trim()) && let Some(entry) = self.book.entry_mut(id)
+                && entry.name != name.trim()
+            {
+                entry.name = name.trim().to_owned();
+                self.revision += 1;
+            }
+            field.surrender_focus();
+        } else {
+            self.rename = Some((id, name, false));
+        }
     }
+
 }
 
 pub(super) fn seed_id(label: &str, recipe: u64) -> egui::Id {
@@ -296,7 +320,7 @@ impl Studio {
         self.skip_history = true;
     }
 
-    fn add_named_recipe(&mut self, name: String, recipe: Project) -> Option<u64> {
+    pub(super) fn add_named_recipe(&mut self, name: String, recipe: Project) -> Option<u64> {
         if !self.recipe_tabs.can_add() || self.drag_before.is_some() {
             return None;
         }
@@ -308,6 +332,7 @@ impl Studio {
             .map(|entry| entry.id)
             .max()?
             + 1;
+        self.recipe_tabs.closed.remove(&id);
         self.recipe_tabs.book.entries.push(RecipeEntry {
             id,
             name,
@@ -364,11 +389,16 @@ impl Studio {
             )
         };
         if let Some(id) = self.add_named_recipe(name, recipe) {
-            let path = dock.find_tab(&Tab::Recipe(anchor));
+            let path = dock.find_tab(&Tab::Recipe(anchor)).or_else(|| dock.find_tab(&Tab::RecipeAdd));
             if let Some(path) = path
                 && let Ok(leaf) = dock.leaf_mut(path.node_path())
             {
                 leaf.append_tab(Tab::Recipe(id));
+                if let Some(add) = leaf.tabs.iter().position(|tab| *tab == Tab::RecipeAdd) {
+                    leaf.tabs.remove(add);
+                    leaf.tabs.push(Tab::RecipeAdd);
+                    leaf.active = egui_dock::TabIndex(leaf.tabs.len() - 2);
+                }
             } else {
                 dock.push_to_focused_leaf(Tab::Recipe(id));
             }
@@ -421,5 +451,41 @@ impl Studio {
             .entry_mut(id)
             .expect("the edited recipe exists")
             .recipe = Some(parked);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inline_recipe_name_commits_and_close_preserves_the_entry() {
+        let ctx = egui::Context::default();
+        let mut tabs = RecipeTabs::default();
+        tabs.begin_rename(FIRST_RECIPE);
+        let render = |tabs: &mut RecipeTabs, events| {
+            let mut output = ctx.run_ui(egui::RawInput {
+                focused: true, events, ..Default::default()
+            }, |ui| {
+                let tab = ui.add_sized([130., 28.], egui::Button::new("Recipe"));
+                tabs.rename_in_tab(FIRST_RECIPE, &tab);
+            });
+            output.textures_delta.clear();
+        };
+        render(&mut tabs, vec![]);
+        render(&mut tabs, vec![]);
+        render(&mut tabs, vec![egui::Event::Text("Islands".into())]);
+        render(&mut tabs, vec![egui::Event::Key {
+            key: egui::Key::Enter, physical_key: None, pressed: true, repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }]);
+        assert_eq!(tabs.name(FIRST_RECIPE), "Islands");
+        assert!(!tabs.renaming());
+        tabs.close(FIRST_RECIPE);
+        let mut dock = layout();
+        tabs.rebuild_tabs(&mut dock);
+        assert!(dock.find_tab(&Tab::Recipe(FIRST_RECIPE)).is_none());
+        assert!(dock.find_tab(&Tab::RecipeAdd).is_some());
+        assert_eq!(tabs.name(FIRST_RECIPE), "Islands");
     }
 }
