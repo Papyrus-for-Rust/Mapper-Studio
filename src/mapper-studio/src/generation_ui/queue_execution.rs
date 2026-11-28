@@ -35,6 +35,7 @@ fn admission_blocker(
     limits: Limits,
     active_mib: impl Iterator<Item = usize>,
     request_mib: usize,
+    automatic: bool,
 ) -> Option<&'static str> {
     let (active, memory) = active_mib.fold((0, 0usize), |(count, sum), bytes| (count + 1, sum + bytes));
     if limits.concurrent_maps.is_some_and(|maximum| active >= maximum) {
@@ -43,10 +44,10 @@ fn admission_blocker(
     if active >= limits.effective_workers() {
         return Some("Waiting for CPU workers");
     }
-    // A job that needs the whole budget runs on its own. Its generation
-    // stages still enforce their existing allocation limits.
-    if active != 0 && memory.saturating_add(request_mib) > limits.terrain_memory_mib {
-        return Some("Waiting for terrain memory");
+    // Keep outstanding reservations while jobs allocate their buffers. Auto
+    // waits even when idle, since other processes may already be near the target.
+    if (active != 0 || automatic) && memory.saturating_add(request_mib) > limits.terrain_memory_mib {
+        return Some(if automatic { "Waiting for system RAM" } else { "Waiting for terrain memory" });
     }
     None
 }
@@ -457,23 +458,35 @@ impl Studio {
     fn capacity_blocker(&self, recipe: &Project, include_primary: bool) -> Option<&'static str> {
         let execution = &self.generation.execution;
         let primary = execution.primary_budget.as_ref().filter(|_| include_primary);
+        let auto_headroom = self.preferences.auto_terrain_headroom();
+        let mut limits = self.preferences.generation_resources;
+        if let Some(headroom) = auto_headroom {
+            limits.terrain_memory_mib = headroom;
+        }
         admission_blocker(
-            self.preferences.generation_resources,
+            limits,
             execution.jobs.values().map(|job| &job.budget)
                 .chain(execution.retiring.iter().filter(|budget| budget.has_workers()))
                 .chain(primary)
                 .map(JobBudget::terrain_mib),
-            self.reserve_terrain(recipe),
+            self.terrain_request(recipe, auto_headroom),
+            auto_headroom.is_some(),
         )
     }
 
     fn reserve_terrain(&self, recipe: &Project) -> usize {
-        let available = self.preferences.generation_resources.terrain_memory_mib;
+        self.terrain_request(recipe, self.preferences.auto_terrain_headroom())
+    }
+
+    fn terrain_request(&self, recipe: &Project, auto_headroom: Option<usize>) -> usize {
+        let manual = self.preferences.generation_resources.terrain_memory_mib;
         // A custom graph can have an arbitrary number of live terrain buffers.
         if recipe.terrain_graph.is_some() {
-            available
+            auto_headroom.map_or(manual, |headroom| headroom.clamp(256, 16384))
+        } else if auto_headroom.is_some() {
+            terrain_reservation(recipe)
         } else {
-            terrain_reservation(recipe).min(available)
+            terrain_reservation(recipe).min(manual)
         }
     }
 
@@ -665,6 +678,8 @@ impl Studio {
                 if !self.primary_waits_for_capacity(&self.project) {
                     let reuse_render = self.generation.execution.start_pending.take().unwrap();
                     self.start_generation_candidate(ctx, reuse_render);
+                } else {
+                    ctx.request_repaint_after(Duration::from_millis(500));
                 }
             } else if std::mem::take(&mut self.generation.execution.advance_pending) {
                 self.advance_generation(ctx);
@@ -765,6 +780,7 @@ impl Studio {
             });
             let Some(item) = selected else { break; };
             if self.capacity_blocker(&item.recipe, true).is_some() {
+                ctx.request_repaint_after(Duration::from_millis(500));
                 break;
             }
             let id = item.id;
@@ -898,16 +914,29 @@ mod tests {
     fn map_admission_respects_cpu_memory_and_explicit_cap() {
         let limits = Limits { cpu_workers: 1, ..Limits::default() };
         assert_eq!(limits.concurrent_maps, None);
-        assert_eq!(admission_blocker(limits, [].into_iter(), 64), None);
-        assert_eq!(admission_blocker(limits, [64].into_iter(), 64), Some("Waiting for CPU workers"));
+        assert_eq!(admission_blocker(limits, [].into_iter(), 64, false), None);
+        assert_eq!(admission_blocker(limits, [64].into_iter(), 64, false), Some("Waiting for CPU workers"));
 
         let capped = Limits { concurrent_maps: Some(1), ..limits };
-        assert_eq!(admission_blocker(capped, [64].into_iter(), 64), Some("Waiting for a generation slot"));
+        assert_eq!(admission_blocker(capped, [64].into_iter(), 64, false), Some("Waiting for a generation slot"));
 
         if mapper_studio::generation_resources::available_workers() >= 4 {
             let uncapped = Limits { cpu_workers: 4, terrain_memory_mib: 256, ..limits };
-            assert_eq!(admission_blocker(uncapped, [64, 64, 64].into_iter(), 64), None);
-            assert_eq!(admission_blocker(uncapped, [64, 64, 64].into_iter(), 65), Some("Waiting for terrain memory"));
+            assert_eq!(admission_blocker(uncapped, [64, 64, 64].into_iter(), 64, false), None);
+            assert_eq!(admission_blocker(uncapped, [64, 64, 64].into_iter(), 65, false), Some("Waiting for terrain memory"));
+        }
+    }
+
+    #[test]
+    fn automatic_admission_waits_at_the_ram_target_and_reopens_with_headroom() {
+        let limits = Limits { cpu_workers: 8, terrain_memory_mib: 990, ..Limits::default() };
+        assert_eq!(
+            admission_blocker(limits, std::iter::empty(), 997, true),
+            Some("Waiting for system RAM"),
+        );
+        let limits = Limits { terrain_memory_mib: 4096, ..limits };
+        if mapper_studio::generation_resources::available_workers() >= 4 {
+            assert_eq!(admission_blocker(limits, [997; 3].into_iter(), 997, true), None);
         }
     }
 

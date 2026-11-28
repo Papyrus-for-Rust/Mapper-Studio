@@ -332,10 +332,14 @@ impl Studio {
     }
 
     fn performance_settings(&mut self, ui: &mut egui::Ui) {
-        use mapper_studio::generation_resources::{self, ImageCompute};
+        use mapper_studio::generation_resources::{self, ImageCompute, TerrainMemoryMode};
 
         preference_section(ui, "CPU & memory");
-        let before = self.preferences.generation_resources;
+        let before = (
+            self.preferences.generation_resources,
+            self.preferences.terrain_memory_mode,
+            self.preferences.terrain_ram_target_percent,
+        );
         let limits = &mut self.preferences.generation_resources;
         preference_row(ui, "Concurrent maps", |ui, label| {
             let current = limits.concurrent_maps.map_or_else(|| "Uncapped".into(), |n| n.to_string());
@@ -352,8 +356,24 @@ impl Studio {
         });
         limit_row(ui, "CPU workers", &mut limits.cpu_workers, 1..=generation_resources::available_workers(),
             "Maximum workers for terrain and map images. Native libraries manage their own threads. Applies to the next job.");
-        limit_row(ui, "Terrain memory (MiB)", &mut limits.terrain_memory_mib, 256..=16384,
-            "Shared terrain workspace budget for concurrent maps. Applies to new work.");
+        let terrain_mode = &mut self.preferences.terrain_memory_mode;
+        preference_row(ui, "Terrain memory", |ui, label| {
+            choice_group(ui, label, terrain_mode, [
+                (TerrainMemoryMode::Auto, "Auto", "Use live system RAM to admit new maps."),
+                (TerrainMemoryMode::Manual, "Manual", "Use a fixed shared terrain workspace limit."),
+            ]);
+        });
+        match *terrain_mode {
+            TerrainMemoryMode::Auto => limit_row(
+                ui, "System RAM target (%)", &mut self.preferences.terrain_ram_target_percent,
+                generation_resources::RAM_TARGET_RANGE,
+                "New maps wait if their estimated terrain memory would take system RAM usage past this target. Active maps continue.",
+            ),
+            TerrainMemoryMode::Manual => limit_row(
+                ui, "Terrain memory (MiB)", &mut limits.terrain_memory_mib, 256..=16384,
+                "Shared terrain workspace budget for concurrent maps. Applies to new work.",
+            ),
+        }
         limit_row(ui, "Image memory (MiB)", &mut limits.image_memory_mib, 16..=4096,
             "Maximum image-job buffers. Native library allocations are managed separately.");
 
@@ -367,7 +387,9 @@ impl Studio {
         });
         limit_row(ui, "GPU buffers (MiB)", &mut limits.gpu_memory_mib, 32..=2048,
             "Buffer limit for GPU map images and GPU-bound erosion recipes.");
-        if before != *limits {
+        if before != (
+            *limits, self.preferences.terrain_memory_mode, self.preferences.terrain_ram_target_percent,
+        ) {
             self.erosion_comparison.cancel();
             let _ = mapper_studio::generation_resources::configure(*limits);
             self.save_preferences();
@@ -498,12 +520,12 @@ fn preference_row(ui: &mut egui::Ui, title: &str, control: impl FnOnce(&mut egui
     });
 }
 
-fn choice_group<T: Copy + PartialEq>(
-    ui: &mut egui::Ui, label: egui::Id, value: &mut T, choices: [(T, &str, &str); 3],
+fn choice_group<T: Copy + PartialEq, const N: usize>(
+    ui: &mut egui::Ui, label: egui::Id, value: &mut T, choices: [(T, &str, &str); N],
 ) {
     let font = egui::TextStyle::Button.resolve(ui.style());
     let padding = ui.spacing().button_padding.x * 2.;
-    let width = 2. + choices.iter().map(|(_, text, _)| {
+    let width = N.saturating_sub(1) as f32 + choices.iter().map(|(_, text, _)| {
         ui.painter().layout_no_wrap((*text).into(), font.clone(), ui.visuals().text_color())
             .size().x.ceil() + padding
     }).sum::<f32>();
@@ -514,7 +536,7 @@ fn choice_group<T: Copy + PartialEq>(
             for (index, (choice, text, help)) in choices.into_iter().enumerate() {
                 let corners = egui::CornerRadius {
                     nw: if index == 0 { 6 } else { 0 }, sw: if index == 0 { 6 } else { 0 },
-                    ne: if index == 2 { 6 } else { 0 }, se: if index == 2 { 6 } else { 0 },
+                    ne: if index + 1 == N { 6 } else { 0 }, se: if index + 1 == N { 6 } else { 0 },
                 };
                 if ui.add(egui::Button::selectable(*value == choice, text)
                     .frame(true).frame_when_inactive(true).corner_radius(corners))

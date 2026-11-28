@@ -1,5 +1,5 @@
 [workspace]
-members = ["src/papyrus-terrain", "src/mapper-studio", "src/papyrus-file-id", "src/mapper-plugin-sdk"]
+members = ["src/papyrus-terrain", "src/mapper-studio", "src/papyrus-file-id", "src/papyrus-system-memory", "src/mapper-plugin-sdk"]
 default-members = ["src/papyrus-terrain"]
 resolver = "2"
 

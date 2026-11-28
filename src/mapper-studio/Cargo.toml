@@ -37,6 +37,7 @@ unsafe_code = "forbid"
 
 [target.'cfg(windows)'.dependencies]
 papyrus-file-id = { path = "../papyrus-file-id" }
+papyrus-system-memory = { path = "../papyrus-system-memory" }
 
 [[bin]]
 name = "mapper-studio"

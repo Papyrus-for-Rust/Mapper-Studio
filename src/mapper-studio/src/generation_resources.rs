@@ -14,6 +14,41 @@ pub enum ImageCompute {
     Cpu,
     Gpu,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerrainMemoryMode {
+    #[default]
+    Auto,
+    Manual,
+}
+
+pub const DEFAULT_RAM_TARGET_PERCENT: usize = 80;
+pub const RAM_TARGET_RANGE: std::ops::RangeInclusive<usize> = 50..=95;
+
+fn ram_headroom_mib(total: u64, available: u64, commit: u64, target: usize) -> usize {
+    const MIB: u64 = 1024 * 1024;
+    let used = total.saturating_sub(available);
+    let target_bytes = total.saturating_mul(target as u64) / 100;
+    let headroom = target_bytes.saturating_sub(used).min(commit);
+    usize::try_from(headroom / MIB).unwrap_or(usize::MAX)
+}
+
+/// Additional memory we can commit while leaving room for Windows and other apps.
+pub fn terrain_ram_headroom_mib(target: usize) -> Option<usize> {
+    let (total, available, commit) = physical_memory()?;
+    Some(ram_headroom_mib(total, available, commit, target))
+}
+
+#[cfg(windows)]
+fn physical_memory() -> Option<(u64, u64, u64)> {
+    papyrus_system_memory::physical_memory()
+}
+
+#[cfg(not(windows))]
+fn physical_memory() -> Option<(u64, u64, u64)> {
+    None
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Limits {
@@ -195,6 +230,16 @@ fn prepare_pool(job: &mut Option<ThreadPool>, limits: Limits) -> Result<&ThreadP
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn auto_terrain_headroom_tracks_ram_pressure_and_commit_limit() {
+        const MIB: u64 = 1024 * 1024;
+        let total = 32_000 * MIB;
+        assert_eq!(ram_headroom_mib(total, 14_000 * MIB, u64::MAX, 80), 7_600);
+        assert_eq!(ram_headroom_mib(total, 6_000 * MIB, u64::MAX, 80), 0);
+        assert_eq!(ram_headroom_mib(total, 14_000 * MIB, 2048 * MIB, 80), 2048);
+        assert_eq!(ram_headroom_mib(total, 14_000 * MIB, u64::MAX, 70), 4_400);
+    }
+
     #[test]
     fn terrain_memory_upgrades_saved_limits_and_validates_its_own_range() {
         let mut limits: Limits = serde_json::from_str(

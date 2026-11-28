@@ -138,6 +138,8 @@ pub struct Preferences {
     pub export_folder: Option<PathBuf>,
     pub map_colors: crate::map_colors::Preferences,
     pub generation_resources: crate::generation_resources::Limits,
+    pub terrain_memory_mode: crate::generation_resources::TerrainMemoryMode,
+    pub terrain_ram_target_percent: usize,
     pub topology_groups: Vec<crate::topology_presets::Preset>,
 }
 impl Default for Preferences {
@@ -170,6 +172,8 @@ impl Default for Preferences {
             export_folder: None,
             map_colors: Default::default(),
             generation_resources: Default::default(),
+            terrain_memory_mode: Default::default(),
+            terrain_ram_target_percent: crate::generation_resources::DEFAULT_RAM_TARGET_PERCENT,
             topology_groups: Vec::new(),
         }
     }
@@ -197,6 +201,24 @@ impl Preferences {
         Ok(())
     }
 
+    /// Auto is sampled at admission. The fallback retains the saved fixed budget.
+    pub fn auto_terrain_headroom(&self) -> Option<usize> {
+        use crate::generation_resources::{TerrainMemoryMode, terrain_ram_headroom_mib};
+        if self.terrain_memory_mode == TerrainMemoryMode::Auto {
+            terrain_ram_headroom_mib(self.terrain_ram_target_percent)
+        } else {
+            None
+        }
+    }
+
+    fn validate_resource_preferences(&self) -> Result<(), String> {
+        self.generation_resources.validate()?;
+        if !crate::generation_resources::RAM_TARGET_RANGE.contains(&self.terrain_ram_target_percent) {
+            return Err("Invalid automatic terrain RAM target".into());
+        }
+        Ok(())
+    }
+
     pub fn path() -> Result<PathBuf, String> {
         let root = std::env::var_os("LOCALAPPDATA")
             .map(PathBuf::from)
@@ -217,7 +239,14 @@ impl Preferences {
         if bytes.len() > 65536 {
             return Err("Settings exceed 64 KiB".into());
         }
-        let mut prefs: Self = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        let document: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        let legacy = document.get("terrain_memory_mode").is_none();
+        let mut prefs: Self = serde_json::from_value(document).map_err(|e| e.to_string())?;
+        if legacy && prefs.generation_resources.terrain_memory_mib
+            != crate::generation_resources::Limits::default().terrain_memory_mib
+        {
+            prefs.terrain_memory_mode = crate::generation_resources::TerrainMemoryMode::Manual;
+        }
         if !UI_SCALE_PRESETS.contains(&prefs.ui_scale_percent) {
             prefs.ui_scale_percent = DEFAULT_UI_SCALE;
         }
@@ -225,7 +254,7 @@ impl Preferences {
             return Err("Unsupported settings version; existing file retained".into());
         }
         crate::installations::validate(&prefs.installations, prefs.selected_installation)?;
-        prefs.generation_resources.validate()?;
+        prefs.validate_resource_preferences()?;
         crate::monument_icons::validate(&prefs.monument_icons)?;
         prefs.validate_monument_display()?;
         crate::topology_presets::validate(&prefs.topology_groups)?;
@@ -233,7 +262,7 @@ impl Preferences {
     }
     pub fn save(&self, path: &Path) -> Result<(), String> {
         crate::installations::validate(&self.installations, self.selected_installation)?;
-        self.generation_resources.validate()?;
+        self.validate_resource_preferences()?;
         crate::monument_icons::validate(&self.monument_icons)?;
         self.validate_monument_display()?;
         crate::topology_presets::validate(&self.topology_groups)?;
@@ -252,6 +281,24 @@ impl Preferences {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn default_terrain_budget_migrates_to_auto_and_custom_limits_stay_manual() {
+        use crate::generation_resources::TerrainMemoryMode;
+        let dir = tempfile::tempdir().unwrap();
+        let settings = dir.path().join("settings.json");
+        assert_eq!(Preferences::load(&settings).unwrap().terrain_ram_target_percent, 80);
+        for (budget, mode) in [(2048, TerrainMemoryMode::Auto), (4096, TerrainMemoryMode::Manual)] {
+            std::fs::write(&settings, format!(r#"{{"generation_resources":{{"terrain_memory_mib":{budget}}}}}"#)).unwrap();
+            let mut prefs = Preferences::load(&settings).unwrap();
+            assert_eq!(prefs.terrain_memory_mode, mode);
+            assert_eq!(prefs.generation_resources.terrain_memory_mib, budget);
+            prefs.terrain_memory_mode = TerrainMemoryMode::Auto;
+            prefs.terrain_ram_target_percent = 75;
+            prefs.save(&settings).unwrap();
+            assert_eq!(Preferences::load(&settings).unwrap(), prefs);
+        }
+    }
+
     #[test]
     fn image_export_preferences_upgrade_old_settings_and_reject_unknown_resolutions() {
         let old: Preferences = serde_json::from_str(r#"{"schema":1,"rust_folder":null}"#).unwrap();

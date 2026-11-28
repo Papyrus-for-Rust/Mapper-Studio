@@ -1812,6 +1812,7 @@ dependencies = [
  "hex",
  "mapper-plugin-sdk",
  "papyrus-file-id",
+ "papyrus-system-memory",
  "papyrus-terrain",
  "png",
  "pollster 1.0.1",
@@ -2382,6 +2383,10 @@ dependencies = [
  "tempfile",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "papyrus-system-memory"
+version = "0.1.0"
 
 [[package]]
 name = "papyrus-terrain"
