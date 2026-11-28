@@ -283,40 +283,65 @@ impl Studio {
                     self.recipe_tabs.pending_new = Some((self.recipe_tabs.active(), false));
                 }
             });
-            ui.add_space(10.);
-            ui.add(egui::TextEdit::singleline(&mut query).hint_text("Search recipes and projects")
-                .desired_width(ui.available_width().min(330.)));
-            let query = query.trim().to_lowercase();
             ui.add_space(14.);
-            ui.label(egui::RichText::new("Recipes").size(16.).strong());
-            for (&key, item) in self.recipe_library.index.recipes.iter().rev() {
-                if !item.name.to_lowercase().contains(&query) { continue; }
-                ui.horizontal(|ui| {
-                    let width = (ui.available_width() - 115.).max(48.);
-                    if ui.add_sized([width, 30.], egui::Button::new(&item.name).truncate()).clicked() {
-                        recipe = Some(key);
-                    }
-                    ui.weak(if item.seed == 0 { format!("{} m", item.size) }
-                        else { format!("{} m · {}", item.size, item.seed) });
-                });
-            }
-            if self.recipe_library.index.recipes.is_empty() {
-                ui.weak("Recipes you edit in Mapper appear here.");
-            }
-            ui.add_space(16.);
-            ui.label(egui::RichText::new("Recent projects").size(16.).strong());
-            for path in &self.recipe_library.index.recent {
-                let name = path.file_name().unwrap_or_default().to_string_lossy();
-                if !name.to_lowercase().contains(&query) { continue; }
-                if ui.add(egui::Button::new(name.as_ref()).truncate()).on_hover_text(path.display().to_string()).clicked() {
-                    project = Some(path.clone());
+            let version = self.updates.version();
+            let mut library = |ui: &mut egui::Ui| {
+                ui.add_space(10.);
+                ui.add(egui::TextEdit::singleline(&mut query).hint_text("Search recipes and projects")
+                    .desired_width(ui.available_width().min(330.)));
+                let query = query.trim().to_lowercase();
+                ui.add_space(14.);
+                ui.label(egui::RichText::new("Recipes").size(16.).strong());
+                for (&key, item) in self.recipe_library.index.recipes.iter().rev() {
+                    if !item.name.to_lowercase().contains(&query) { continue; }
+                    ui.horizontal(|ui| {
+                        let width = (ui.available_width() - 115.).max(48.);
+                        if ui.add_sized([width, 30.], egui::Button::new(&item.name).truncate()).clicked() {
+                            recipe = Some(key);
+                        }
+                        ui.weak(if item.seed == 0 { format!("{} m", item.size) }
+                            else { format!("{} m · {}", item.size, item.seed) });
+                    });
                 }
-            }
-            if self.recipe_library.index.recent.is_empty() {
-                ui.weak("Open or save a project to add it here.");
-            }
-            if !self.recipe_library.message.is_empty() {
-                ui.colored_label(ui.visuals().warn_fg_color, &self.recipe_library.message);
+                if self.recipe_library.index.recipes.is_empty() {
+                    ui.weak("Recipes you edit in Mapper appear here.");
+                }
+                ui.add_space(16.);
+                ui.label(egui::RichText::new("Recent projects").size(16.).strong());
+                for path in &self.recipe_library.index.recent {
+                    let name = path.file_name().unwrap_or_default().to_string_lossy();
+                    if !name.to_lowercase().contains(&query) { continue; }
+                    if ui.add(egui::Button::new(name.as_ref()).truncate()).on_hover_text(path.display().to_string()).clicked() {
+                        project = Some(path.clone());
+                    }
+                }
+                if self.recipe_library.index.recent.is_empty() {
+                    ui.weak("Open or save a project to add it here.");
+                }
+                if !self.recipe_library.message.is_empty() {
+                    ui.colored_label(ui.visuals().warn_fg_color, &self.recipe_library.message);
+                }
+            };
+            if ui.available_width() >= 690. {
+                let list_width = ui.available_width() - 290.;
+                ui.horizontal_top(|ui| {
+                    ui.allocate_ui_with_layout(egui::vec2(list_width, 0.),
+                        egui::Layout::top_down(egui::Align::Min), |ui| {
+                            ui.set_width(list_width);
+                            library(ui);
+                        });
+                    ui.separator();
+                    ui.vertical(|ui| {
+                        ui.set_width(ui.available_width());
+                        changelog(ui, version);
+                    });
+                });
+            } else {
+                egui::CollapsingHeader::new("What’s new").show(ui, |ui| {
+                    changelog_entries(ui, version);
+                });
+                ui.add_space(6.);
+                library(ui);
             }
         });
         ui.data_mut(|data| data.insert_temp(search_id, query));
@@ -329,9 +354,59 @@ impl Studio {
     }
 }
 
+const CHANGELOG: &str = include_str!("../../../CHANGELOG.md");
+
+fn release_notes(installed: Option<&str>) -> impl Iterator<Item = (&'static str, &'static str)> {
+    let current = installed.and_then(|version| semver::Version::parse(version).ok());
+    CHANGELOG.split("\n## ").skip(1).filter_map(move |section| {
+        let (title, contents) = section.split_once('\n')?;
+        let title = title.trim();
+        let visible = if title == "Unreleased" {
+            current.is_none()
+        } else {
+            let version = semver::Version::parse(title).ok()?;
+            current.as_ref().is_none_or(|current| version.cmp_precedence(current).is_le())
+        };
+        visible.then_some((title, contents.trim()))
+    })
+}
+
+fn changelog(ui: &mut egui::Ui, installed: Option<&str>) {
+    ui.label(egui::RichText::new("What’s new").size(16.).strong());
+    ui.add_space(4.);
+    changelog_entries(ui, installed);
+}
+
+fn changelog_entries(ui: &mut egui::Ui, installed: Option<&str>) {
+    for (index, (title, notes)) in release_notes(installed).enumerate() {
+        egui::CollapsingHeader::new(title).id_salt(("release-notes", title))
+            .default_open(index == 0).show(ui, |ui| {
+                for line in notes.lines().map(str::trim).filter(|line| !line.is_empty()) {
+                    if let Some(note) = line.strip_prefix("- ") {
+                        ui.horizontal_top(|ui| {
+                            ui.label("•");
+                            ui.add(egui::Label::new(note).wrap());
+                        });
+                    } else {
+                        ui.add(egui::Label::new(line).wrap());
+                    }
+                }
+            });
+    }
+    ui.hyperlink_to("GitHub releases", "https://github.com/Papyrus-for-Rust/Mapper-Studio/releases");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn home_changelog_hides_unreleased_and_newer_notes_from_packaged_versions() {
+        let titles = |version| release_notes(version).map(|(title, _)| title).collect::<Vec<_>>();
+        assert_eq!(titles(Some("0.1.0-beta.1")), ["0.1.0-beta.1"]);
+        assert_eq!(titles(Some("0.1.0-beta.4")), ["0.1.0-beta.4", "0.1.0-beta.1"]);
+        assert_eq!(titles(None).first(), Some(&"Unreleased"));
+    }
 
     #[test]
     fn recipe_library_reopens_the_same_record_and_keeps_recent_projects() {
