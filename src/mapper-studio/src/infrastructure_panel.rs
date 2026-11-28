@@ -454,6 +454,15 @@ impl RoadPanel {
                 && self.source.is_some() && pins.is_some())
     }
 
+    pub(super) fn enable_prepared_default(&mut self, project: &mut Project, root: &std::path::Path, pins: &AssetIdentity) {
+        if project.roads.is_none() && self.prepared_matches(&Key {
+            root: root.to_owned(), catalog: pins.catalog_sha256.clone(),
+            pin: None, surface_pin: None, roadside_pin: None,
+        }) {
+            self.set_enabled(project, Some(pins.clone()), true);
+        }
+    }
+
     fn set_enabled(&mut self, project: &mut Project, pins: Option<AssetIdentity>, enabled: bool) {
         if !enabled {
             project.roads = None;

@@ -298,6 +298,9 @@ pub struct Project {
     pub performance: Performance,
     #[serde(default, skip_serializing_if = "recipe_options::Options::is_default")]
     pub options: recipe_options::Options,
+    /// Fresh Studio recipes resolve optional stage bindings once the client is ready.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pending_vanilla_stages: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub composition_engine: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -338,6 +341,7 @@ impl Default for Project {
             size: 4000,
             performance: Performance::default(),
             options: recipe_options::Options::default(),
+            pending_vanilla_stages: false,
             composition_engine: Some(papyrus_terrain::monument_composition::WATER_VERSION.into()),
             monument_assets: None,
             roads: None,
@@ -515,6 +519,25 @@ impl Project {
         });
         Ok(())
     }
+    pub fn set_master_seed(&mut self, seed: u32) {
+        // Rails may already be enabled before the first seed is entered.
+        // Fill in their defaults while preserving any explicitly edited seed.
+        if self.master_seed == 0 && seed != 0 && let Some(rails) = &mut self.rails {
+            let blank = rail_generation::initial_settings(0);
+            let seeded = rail_generation::initial_settings(seed);
+            for path in ["/ring/seed", "/approaches/seed", "/bed/branching/seed", "/bed/siding/seed"] {
+                if let Some(current) = rails.settings.pointer_mut(path)
+                    && Some(&*current) == blank.pointer(path)
+                    && let Some(value) = seeded.pointer(path)
+                {
+                    *current = value.clone();
+                }
+            }
+        }
+        self.master_seed = seed;
+        self.refresh_inherited_seeds();
+    }
+
     pub fn refresh_inherited_seeds(&mut self) {
         for (seed, name) in self.seeds.iter_mut().zip(STAGES) {
             if seed.inherited {

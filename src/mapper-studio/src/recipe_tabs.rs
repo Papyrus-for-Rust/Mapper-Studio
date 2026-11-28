@@ -269,6 +269,7 @@ impl Studio {
     }
 
     fn tick_recipe_work(&mut self, ctx: &egui::Context) {
+        self.initialize_vanilla_stages(ctx);
         let root = self.source.bound_root(&self.project);
         let catalog = self.prefabs.catalog(&self.project);
         let bindings = self.prefabs.bindings(&self.project);

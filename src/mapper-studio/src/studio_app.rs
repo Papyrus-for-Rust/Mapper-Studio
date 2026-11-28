@@ -228,6 +228,7 @@ impl Studio {
         // The library keeps its versioned independent preview fixture. Desktop
         // projects start with the selected installation's scene roster instead.
         project.targets.clear();
+        project.pending_vanilla_stages = true;
         project.master_seed = 0;
         project.refresh_inherited_seeds();
         project
@@ -482,6 +483,36 @@ impl Studio {
             self.status = error;
         }
     }
+    fn initialize_vanilla_stages(&mut self, ctx: &egui::Context) {
+        if !self.project.pending_vanilla_stages
+            || !mapper_studio::native_preview::is_native(&self.project.preview_engine)
+            || self.prefabs.loading_assets()
+        {
+            return;
+        }
+        let (Some(root), Some(catalog), Some(bindings)) = (
+            self.source.bound_root(&self.project),
+            self.prefabs.catalog(&self.project),
+            self.prefabs.bindings(&self.project),
+        ) else { return };
+        if !self.prefabs.generation_assets_ready(&self.project, &root) {
+            return;
+        }
+        let pins = mapper_studio::AssetIdentity {
+            catalog_sha256: catalog.sha256.clone(),
+            bindings_sha256: bindings.sha256.clone(),
+        };
+        self.project.pending_vanilla_stages = false;
+        self.monuments.apply_defaults(&mut self.project);
+        self.water.enable_prepared_default(&mut self.project, &root, ctx);
+        self.roads.enable_prepared_default(&mut self.project, &root, &pins);
+        if self.project.rails.is_none() {
+            self.rails.tick(&self.project, Some(root.clone()), Some(catalog), Some(bindings), ctx);
+            self.project.rails = self.rails.ready_for_import(&self.project);
+        }
+        self.decoration_panel.enable_prepared_default(&mut self.project, &root, &pins);
+    }
+
     fn preview_current(&self) -> bool {
         self.preview
             .as_ref()
@@ -915,7 +946,7 @@ impl Studio {
             placement_engine, master_seed, size, seeds, targets, performance, options,
             composition_engine, monument_assets, objects, monument_rules, rivers,
             roads: _, rails: _, decoration: _, topology_edits: _, monument_addons: _,
-            monument_overlay_choices: _, path_edits: _, custom_monuments: _,
+            monument_overlay_choices: _, path_edits: _, custom_monuments: _, pending_vanilla_stages: _,
         } = recipe;
         let current = &self.project;
         current.schema == *schema
@@ -2487,6 +2518,7 @@ impl eframe::App for Studio {
         );
         if let Some(prepared) = self.prefabs.take_prepared_generation() {
             self.decoration_panel.accept_cliffs(prepared.uniform_cliffs);
+            self.decoration_panel.accept_default_objects(prepared.default_objects);
             let text_error=prepared.steps.iter().find(|step|step.name=="Preparing map text").and_then(|step|step.error.clone()).unwrap_or_default();
             if let Some(font) = &prepared.map_labels {
                 self.generation.sync_map_font(font);
@@ -2575,6 +2607,9 @@ impl eframe::App for Studio {
         self.roads
             .tick(&self.project, self.prefabs.catalog(&self.project),self.source.bound_root(&self.project).map(|p|p.to_owned()), &ctx);
         self.apply_prepared_recipe_defaults();
+        if !self.generation.busy() {
+            self.initialize_vanilla_stages(&ctx);
+        }
         self.rails.tick(&self.project,self.source.bound_root(&self.project).map(|p|p.to_owned()),self.prefabs.catalog(&self.project),self.prefabs.bindings(&self.project),&ctx);
         self.decoration_panel.tick(
             self.generation.draft().unwrap_or(&self.project),
@@ -4909,6 +4944,34 @@ mod tests {
                 .any(|s| s.ends_with("· requested") || s.ends_with("· placed"))
         );
     }
+    #[test]
+    fn fresh_recipes_keep_pending_defaults_until_a_native_installation_is_ready() {
+        let ctx = egui::Context::default();
+        let mut app = fixture(&ctx);
+        let mut recipe = Studio::new_workbench_project();
+        assert!(recipe.pending_vanilla_stages);
+        assert!(recipe.performance.monuments);
+        assert!(recipe.seeds.iter().all(|seed| seed.inherited));
+        assert!(recipe.terrain_overrides.is_none() && recipe.biome_overrides.is_none());
+
+        recipe.preview_engine = mapper_studio::native_preview::VERSION.into();
+        let saved = serde_json::to_vec(&recipe).unwrap();
+        app.project = serde_json::from_slice(&saved).unwrap();
+        app.initialize_vanilla_stages(&ctx);
+        assert_eq!(app.project, recipe);
+
+        let mut dock = layout();
+        app.add_recipe_tab(recipe_tabs::FIRST_RECIPE, false, &mut dock);
+        assert!(app.document_recipe().pending_vanilla_stages);
+        let tabs_before = app.recipe_tabs.active();
+        app.project.pending_vanilla_stages = false;
+        app.project.performance.monuments = false;
+        app.add_recipe_tab(tabs_before, true, &mut dock);
+        assert!(!app.document_recipe().pending_vanilla_stages);
+        assert!(!app.document_recipe().performance.monuments);
+        assert!(!Project::default().pending_vanilla_stages);
+    }
+
     #[test]
     fn automatic_new_project_defaults_become_the_clean_initial_recipe() {
         let ctx = egui::Context::default();

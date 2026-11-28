@@ -603,8 +603,7 @@ impl Studio {
                 && let Some(seed) = if seed_text.trim().is_empty() { Some(0) }
                     else { seed_text.trim().parse::<u32>().ok().filter(|seed| *seed <= MAX_SEED) }
             {
-                self.project.master_seed = seed;
-                self.project.refresh_inherited_seeds();
+                self.project.set_master_seed(seed);
             }
             let (rect, response) = ui.allocate_exact_size(Vec2::splat(SEED_CONTROL_SIZE), Sense::click());
             let response = response.on_hover_cursor(egui::CursorIcon::PointingHand)

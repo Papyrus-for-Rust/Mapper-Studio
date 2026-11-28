@@ -33,6 +33,12 @@ impl Panel {
         (Some(path.as_path()) == root && project.installation.as_ref() == Some(source))
             .then(|| recipe.clone())
     }
+    pub(super) fn enable_prepared_default(&mut self, project: &mut Project, root: &std::path::Path, ctx: &egui::Context) {
+        if project.rivers.is_none() && self.ready_for_import(project, Some(root)).is_some() {
+            self.set_enabled(project, Some(root.to_owned()), ctx, true);
+        }
+    }
+
     pub fn accept_prepared(&mut self, root: PathBuf, source: Installation, recipe: Option<Recipe>) {
         self.prepared = recipe.map(|recipe| Arc::new((root, source, recipe)));
     }

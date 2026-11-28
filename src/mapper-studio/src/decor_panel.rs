@@ -33,6 +33,7 @@ pub(super) struct DecorPanel {
     live_error: Option<String>,
     pending_decoration: Option<(Project, mapper_studio::decor_source::Recipe)>,
     prepared_cliffs: Option<mapper_studio::client_preparation::ReadyCliffs>,
+    default_objects: Option<mapper_studio::client_preparation::ReadyObjects>,
 }
 #[derive(Default)]
 pub(super) struct RecipeWork {
@@ -83,6 +84,28 @@ impl DecorPanel {
             .as_ref()
             .is_some_and(|ready| ready.apply(project, root, catalog))
     }
+    pub(super) fn accept_default_objects(&mut self, objects: Option<mapper_studio::client_preparation::ReadyObjects>) {
+        self.default_objects = objects;
+    }
+
+    pub(super) fn enable_prepared_default(
+        &mut self, project: &mut Project, root: &std::path::Path, pins: &mapper_studio::AssetIdentity,
+    ) {
+        let (Some(source), Some(key)) = (&self.source, &self.wanted) else { return };
+        if project.decoration.is_some() || key.root != root || key.catalog != pins.catalog_sha256 {
+            return;
+        }
+        let mut next = project.clone();
+        next.monument_assets.get_or_insert_with(|| pins.clone());
+        next.decoration = Some(source.recipe());
+        next.objects = self.default_objects.as_ref()
+            .and_then(|ready| ready.recipe(&next, root, &pins.catalog_sha256));
+        match next.validate() {
+            Ok(()) => *project = next,
+            Err(error) => self.message = error,
+        }
+    }
+
     pub fn readiness(&self) -> Result<(), String> {
         recipe_readiness(self.live_error.is_some(), self.pending_decoration.is_some() || self.live_task.running())
     }

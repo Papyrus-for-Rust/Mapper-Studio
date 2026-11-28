@@ -234,13 +234,6 @@ pub fn bind(
         bindings,
         &cancelled,
     )?;
-    if monuments.prefabs.values().any(|p| {
-        p.placement_attributes
-            .as_ref()
-            .is_none_or(|a| a.placement_blockers.is_none() || !a.issues.is_empty())
-    }) {
-        return Err("Re-extract and bind monument attributes with verified blocker coverage before enabling live objects".into());
-    }
     recipe.uniform_cliffs_source_sha256 = Some(
         crate::uniform_cliff_source::prepare(
             bindings.installation_root(),
@@ -256,13 +249,29 @@ pub fn bind(
     recipe.jungle_vines_source_sha256 = Some(crate::jungle_vine_source::prepare(
         bindings.installation_root(), catalog, &road, &cancelled)?.sha256().to_owned());
     recipe.validate()?;
-    decoration.verify_road_binding(&road)?;
-    decoration.prepare_live(catalog)?;
-    object_workflow::plan(&road, &decoration.stages)?;
+    verify_prepared_sources(catalog, &road, &decoration, &monuments)?;
     if cancelled() {
         return Err("Live object binding cancelled".into());
     }
     Ok(recipe)
+}
+pub(crate) fn verify_prepared_sources(
+    catalog: &Catalog,
+    road: &road_object_source::Source,
+    decoration: &decor_source::Source,
+    monuments: &crate::monument_source::Source,
+) -> Result<(), String> {
+    if monuments.prefabs.values().any(|p| {
+        p.placement_attributes
+            .as_ref()
+            .is_none_or(|a| a.placement_blockers.is_none() || !a.issues.is_empty())
+    }) {
+        return Err("Re-extract and bind monument attributes with verified blocker coverage before enabling live objects".into());
+    }
+    decoration.verify_road_binding(road)?;
+    decoration.prepare_live(catalog)?;
+    object_workflow::plan(road, &decoration.stages)?;
+    Ok(())
 }
 /// Apply the saved live policy to a private, already stamped/road-shaped composition.
 /// Cancellation or any source/fitting error leaves the caller's terrain untouched.

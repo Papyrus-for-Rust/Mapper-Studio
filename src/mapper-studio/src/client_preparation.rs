@@ -29,7 +29,9 @@ pub struct Report {
     pub river_objects: Option<crate::road_object_source::Source>,
     pub map_labels: Option<std::sync::Arc<crate::map_labels::Prepared>>,
     pub identities: Option<std::sync::Arc<ReadyIdentities>>,
+    pub default_objects: Option<ReadyObjects>,
     road_object_sha256: Option<String>,
+    road_objects: Option<crate::road_object_source::Source>,
 }
 pub struct ReadyIdentities {
     pub(crate) source: std::sync::Arc<crate::prefab_identities::Source>,
@@ -105,6 +107,25 @@ impl ReadyCliffs {
         changed
     }
 }
+/// Shared scenery binding from the same prepared sources used for map generation.
+pub struct ReadyObjects {
+    root: PathBuf,
+    catalog: String,
+    infrastructure: String,
+    decoration: String,
+    monuments: String,
+    recipe: crate::object_generation::Recipe,
+}
+impl ReadyObjects {
+    pub fn recipe(&self, project: &Project, root: &Path, catalog: &str) -> Option<crate::object_generation::Recipe> {
+        (self.root == root && self.catalog == catalog
+            && project.roads.as_ref().is_some_and(|r| r.source_sha256 == self.infrastructure)
+            && project.decoration.as_ref().is_some_and(|r| r.source_sha256 == self.decoration)
+            && project.monument_rules.as_ref().is_some_and(|r| r.source_sha256 == self.monuments))
+            .then(|| self.recipe.clone())
+    }
+}
+
 pub struct ReadyRails {
     root: PathBuf,
     catalog: String,
@@ -402,11 +423,14 @@ fn prepare_with_overlays(
         if let Some(scene) = reports.next() {
             merge_scene_report(&mut report, scene);
         }
+        prepare_default_objects(&mut report, root, catalog, &cancelled)?;
         return Ok(report);
     }
     let monuments = prepare_monuments(root, project, catalog, bindings, include_restrictions, false, &cancelled)?;
     let paths = prepare_paths(root, project, catalog, bindings, false, &cancelled)?;
-    Ok(combine_reports(monuments, paths))
+    let mut report = combine_reports(monuments, paths);
+    prepare_default_objects(&mut report, root, catalog, &cancelled)?;
+    Ok(report)
 }
 fn combine_reports(mut monuments: Report, paths: Report) -> Report {
     monuments.steps.extend(paths.steps);
@@ -418,7 +442,40 @@ fn combine_reports(mut monuments: Report, paths: Report) -> Report {
     monuments.uniform_cliffs = paths.uniform_cliffs;
     monuments.identities = paths.identities;
     monuments.road_object_sha256 = paths.road_object_sha256;
+    monuments.road_objects = paths.road_objects;
     monuments
+}
+
+fn prepare_default_objects(
+    report: &mut Report, root: &Path, catalog: &Catalog, cancelled: &impl Fn() -> bool,
+) -> Result<(), String> {
+    let (Some(road), Some(monuments), Some(decoration), Some(cliffs)) = (
+        report.road_objects.take(), report.monuments.as_ref(),
+        report.decoration.as_ref(), report.uniform_cliffs.as_ref(),
+    ) else { return Ok(()) };
+    let (Some(coastal), Some(vines)) = (&cliffs.coastal, &cliffs.vines) else { return Ok(()) };
+    let monuments = monuments.source().clone();
+    let decoration = decoration.clone();
+    let mut recipe = crate::object_generation::Recipe::new(road.sha256.clone());
+    recipe.uniform_cliffs_source_sha256 = Some(cliffs.source.clone());
+    recipe.coastal_cliffs_source_sha256 = Some(coastal.clone());
+    recipe.jungle_vines_source_sha256 = Some(vines.clone());
+    let mut ready = None;
+    step(report, "Binding shared scenery placement", cancelled, || {
+        recipe.validate()?;
+        crate::object_generation::verify_prepared_sources(catalog, &road, &decoration, &monuments)?;
+        ready = Some(ReadyObjects {
+            root: root.to_owned(),
+            catalog: catalog.sha256.clone(),
+            infrastructure: road.infrastructure_sha256,
+            decoration: decoration.sha256.clone(),
+            monuments: monuments.sha256.clone(),
+            recipe,
+        });
+        Ok(())
+    })?;
+    report.default_objects = ready;
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -1011,7 +1068,8 @@ fn prepare_paths(
         Ok(())
     })?;
     report.uniform_cliffs = uniform_cliffs;
-    report.road_object_sha256 = road_objects.map(|source| source.sha256);
+    report.road_object_sha256 = road_objects.as_ref().map(|source| source.sha256.clone());
+    report.road_objects = road_objects;
     let mut identities = None;
     step(
         &mut report,

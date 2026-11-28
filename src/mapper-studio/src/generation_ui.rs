@@ -1070,6 +1070,9 @@ impl Studio {
                     GenerationBlocker::AssetsUnavailable
                 });
             }
+            if recipe.pending_vanilla_stages {
+                return Err(GenerationBlocker::Other("Preparing recipe stages…".into()));
+            }
             if self.installation_roster_pending {
                 self.monuments.roster_readiness()?;
                 return Err(GenerationBlocker::Other(
@@ -1195,8 +1198,7 @@ impl Studio {
         self.with_recipe_draft(|studio| {
             if studio.project.master_seed != seed {
                 let previous = (!busy).then(|| studio.project.clone());
-                studio.project.master_seed = seed;
-                studio.project.refresh_inherited_seeds();
+                studio.project.set_master_seed(seed);
                 if let Some(previous) = previous {
                     studio.history.record(previous, &studio.project);
                     studio.skip_history = true;
@@ -1210,8 +1212,7 @@ impl Studio {
         if seed == self.project.master_seed {
             seed = seed % mapper_studio::MAX_SEED + 1;
         }
-        self.project.master_seed = seed;
-        self.project.refresh_inherited_seeds();
+        self.project.set_master_seed(seed);
     }
 
     pub(super) fn document_recipe(&self) -> &Project {
